@@ -46,19 +46,18 @@ def webhook():
             parsed_data = ai_parser.parse_transaction_with_ai(incoming_msg)
 
             if parsed_data and 'amount' in parsed_data and 'type' in parsed_data:
-                # Se a IA retornou os dados mínimos, tenta salvar
-                transaction = db.create_transaction(user['id'], parsed_data)
+                # Chama a nova função otimizada do db.py
+                success = db.process_transaction_with_rpc(user['id'], parsed_data)
                 
-                if transaction:
-                    desc = transaction.get('description', 'N/A')
-                    amount = float(transaction.get('amount', 0))
-                    tipo = "Entrada" if transaction.get('type') == 'income' else "Gasto"
-                    message.body(f"✅ {tipo} de R${amount:.2f} em '{desc}' registrado com sucesso!")
+                if success:
+                    desc = parsed_data.get('description', 'N/A')
+                    amount = float(parsed_data.get('amount', 0))
+                    tipo = "Entrada" if parsed_data.get('type') == 'income' else "Gasto"
+                    message.body(f"✅ {tipo} de R${amount:.2f} em '{desc}' registrado!")
                 else:
-                    message.body("❌ Erro ao registrar a transação. Verifique se você já cadastrou uma conta com /cadastrar_conta.")
+                    message.body("❌ Erro ao registrar. Verifique se você já cadastrou uma conta com /cadastrar_conta.")
             else:
-                # Se a IA falhou em entender
-                message.body("😕 Desculpe, não consegui entender. Tente de novo de uma forma diferente (ex: 'gastei 20 na padaria').")
+                message.body("😕 Desculpe, não consegui entender. Tente de novo (ex: 'gastei 20 na padaria').")
 
     return str(response)
 
