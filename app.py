@@ -3,7 +3,11 @@ import os
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 from dotenv import load_dotenv
-import db # Importa nosso novo arquivo db.py
+
+# Importa nossos módulos
+import db
+import commands
+import ai_parser
 
 # Carrega as variáveis de ambiente
 load_dotenv()
@@ -25,24 +29,36 @@ def webhook():
     user = db.get_user_by_phone(sender_phone)
 
     if not user:
-        # Usuário não existe. Vamos criá-lo.
+        # LÓGICA DE CADASTRO DE NOVO USUÁRIO
         if user_state.get(sender_phone) == 'awaiting_name':
-            # Usuário respondeu com o nome
             new_user = db.create_user(sender_phone, incoming_msg)
             message.body(f"Ótimo, {new_user['name']}! Seu cadastro foi concluído. Digite /menu para começar.")
-            del user_state[sender_phone] # Limpa o estado
+            del user_state[sender_phone]
         else:
-            # Primeiro contato do usuário
             message.body("Olá! Bem-vindo(a) ao seu gestor financeiro. Para começar, por favor, me diga seu nome.")
-            user_state[sender_phone] = 'awaiting_name' # Define o estado
+            user_state[sender_phone] = 'awaiting_name'
     else:
-        # Usuário já existe, processa a mensagem normalmente
+        # USUÁRIO JÁ EXISTE, PROCESSA A MENSAGEM
         if incoming_msg.lower().startswith('/'):
-            # Lógica para tratar comandos (será implementada)
-            message.body(f"Olá, {user['name']}! Comando '{incoming_msg}' recebido.")
+            # Trata como um comando
+            response_text = commands.handle_command(incoming_msg.lower(), user['id'])
+            message.body(response_text)
         else:
-            # Lógica para usar a IA (será implementada)
-            message.body("Vou processar sua transação com a IA em breve!")
+            # Trata como linguagem natural com a IA
+            parsed_data = ai_parser.parse_transaction_with_ai(incoming_msg)
+
+            if parsed_data:
+                # Salva a transação no banco de dados
+                db.create_transaction(user['id'], parsed_data)
+                
+                desc = parsed_data.get('description', 'N/A')
+                amount = parsed_data.get('amount', 0)
+                
+                # Monta uma resposta amigável
+                tipo = "Entrada" if parsed_data.get('type') == 'income' else "Gasto"
+                message.body(f"✅ {tipo} de R${amount:.2f} em '{desc}' registrado com sucesso!")
+            else:
+                message.body("Desculpe, não consegui entender a transação. Tente novamente ou use /menu para ajuda.")
 
     return str(response)
 
