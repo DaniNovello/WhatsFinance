@@ -1,0 +1,7 @@
+# Arquivo: requirements.txt
+flask
+twilio
+supabase
+python-dotenv
+gunicorn
+google-generativeai
