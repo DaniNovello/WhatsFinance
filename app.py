@@ -40,25 +40,25 @@ def webhook():
     else:
         # USUÁRIO JÁ EXISTE, PROCESSA A MENSAGEM
         if incoming_msg.lower().startswith('/'):
-            # Trata como um comando
             response_text = commands.handle_command(incoming_msg.lower(), user['id'])
             message.body(response_text)
         else:
-            # Trata como linguagem natural com a IA
             parsed_data = ai_parser.parse_transaction_with_ai(incoming_msg)
 
-            if parsed_data:
-                # Salva a transação no banco de dados
-                db.create_transaction(user['id'], parsed_data)
+            if parsed_data and 'amount' in parsed_data and 'type' in parsed_data:
+                # Se a IA retornou os dados mínimos, tenta salvar
+                transaction = db.create_transaction(user['id'], parsed_data)
                 
-                desc = parsed_data.get('description', 'N/A')
-                amount = parsed_data.get('amount', 0)
-                
-                # Monta uma resposta amigável
-                tipo = "Entrada" if parsed_data.get('type') == 'income' else "Gasto"
-                message.body(f"✅ {tipo} de R${amount:.2f} em '{desc}' registrado com sucesso!")
+                if transaction:
+                    desc = transaction.get('description', 'N/A')
+                    amount = float(transaction.get('amount', 0))
+                    tipo = "Entrada" if transaction.get('type') == 'income' else "Gasto"
+                    message.body(f"✅ {tipo} de R${amount:.2f} em '{desc}' registrado com sucesso!")
+                else:
+                    message.body("❌ Erro ao registrar a transação. Verifique se você já cadastrou uma conta com /cadastrar_conta.")
             else:
-                message.body("Desculpe, não consegui entender a transação. Tente novamente ou use /menu para ajuda.")
+                # Se a IA falhou em entender
+                message.body("😕 Desculpe, não consegui entender. Tente de novo de uma forma diferente (ex: 'gastei 20 na padaria').")
 
     return str(response)
 
