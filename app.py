@@ -37,6 +37,7 @@ def webhook():
         else:
             message.body("Olá! Bem-vindo(a) ao seu gestor financeiro. Para começar, por favor, me diga seu nome.")
             user_state[sender_phone] = 'awaiting_name'
+    # ... (código anterior do app.py) ...
     else:
         # USUÁRIO JÁ EXISTE, PROCESSA A MENSAGEM
         if incoming_msg.lower().startswith('/'):
@@ -46,7 +47,7 @@ def webhook():
             parsed_data = ai_parser.parse_transaction_with_ai(incoming_msg)
 
             if parsed_data and 'amount' in parsed_data and 'type' in parsed_data:
-                # Chama a nova função otimizada do db.py
+                # Chama a função otimizada que agora retorna True ou False
                 success = db.process_transaction_with_rpc(user['id'], parsed_data)
                 
                 if success:
@@ -55,10 +56,11 @@ def webhook():
                     tipo = "Entrada" if parsed_data.get('type') == 'income' else "Gasto"
                     message.body(f"✅ {tipo} de R${amount:.2f} em '{desc}' registrado!")
                 else:
-                    message.body("❌ Erro ao registrar. Verifique se você já cadastrou uma conta com /cadastrar_conta.")
+                    # IMPLEMENTA SUA SUGESTÃO!
+                    message.body(" Ops! Para registrar uma transação, você precisa ter uma conta. Use o comando `/cadastrar_conta [nome]` primeiro.")
             else:
                 message.body("😕 Desculpe, não consegui entender. Tente de novo (ex: 'gastei 20 na padaria').")
-
+# ... (resto do código do app.py) ...
     return str(response)
 
 if __name__ == '__main__':

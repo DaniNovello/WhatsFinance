@@ -26,7 +26,7 @@ def get_accounts_balance(user_id):
 
 # --- Função de Transação Otimizada ---
 def process_transaction_with_rpc(user_id, data):
-    """Chama a função do PostgreSQL para processar tudo de uma vez."""
+    """Chama a função do PostgreSQL e retorna seu resultado booleano."""
     try:
         params = {
             'p_user_id': user_id,
@@ -35,9 +35,9 @@ def process_transaction_with_rpc(user_id, data):
             'p_type': data.get('type'),
             'p_payment_method': data.get('payment_method')
         }
-        # Chama a função mágica no Supabase
-        supabase.rpc('handle_transaction_and_update_balance', params).execute()
-        return True # Sucesso
+        # A resposta da função (true/false) estará em 'response.data'
+        response = supabase.rpc('handle_transaction_and_update_balance', params).execute()
+        return response.data
     except Exception as e:
         print(f"Erro no RPC da transação: {e}")
         return False
