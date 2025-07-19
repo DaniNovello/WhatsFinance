@@ -57,6 +57,10 @@ def get_report(user_id, description, time_period):
         start_date = today - timedelta(days=30)
     elif time_period == 'today':
         start_date = today.replace(hour=0, minute=0, second=0)
+    elif time_period == 'yesterday': # <-- NOVA LÓGICA
+        yesterday = today - timedelta(days=1)
+        start_date = yesterday.replace(hour=0, minute=0, second=0)
+        end_date = yesterday.replace(hour=23, minute=59, second=59)
     else:
         return 0 # Período não suportado por enquanto
 

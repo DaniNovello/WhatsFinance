@@ -1,4 +1,4 @@
-# Arquivo: ai_parser.py (substitua o conteúdo pelo abaixo)
+# Arquivo: ai_parser.py
 import os
 import google.generativeai as genai
 import json
@@ -9,13 +9,18 @@ model = genai.GenerativeModel(model_name="gemini-1.5-flash")
 
 def get_ai_response(message_text):
     prompt = f"""
-    Analise a mensagem do usuário e determine a intenção e as entidades.
-    A intenção pode ser 'register_transaction' ou 'query_report'.
+    Você é um assistente financeiro. Sua tarefa é analisar a mensagem do usuário e retornar um JSON estruturado.
+    A intenção do usuário pode ser 'register_transaction' ou 'query_report'.
 
-    Se a intenção for 'register_transaction', extraia: 'description', 'amount', 'type' ('income' ou 'expense'), e 'payment_method'.
-    Se a intenção for 'query_report', extraia: 'description' (o que foi gasto, ex: 'uber') e um 'time_period' ('last_week', 'last_month', 'today', 'yesterday').
+    1. Se a intenção for 'register_transaction':
+       - Extraia 'description', 'amount', 'type' ('income' ou 'expense'), e 'payment_method'.
+       - Se a descrição não for clara, use "Transação sem descrição".
 
-    Responda em formato JSON.
+    2. Se a intenção for 'query_report':
+       - Extraia 'description' (o que foi gasto). Se for um gasto geral (ex: "quanto gastei"), retorne a descrição como null.
+       - Extraia um 'time_period'. Mapeie palavras como 'hoje' para 'today', 'ontem' para 'yesterday', 'semana passada' para 'last_week', 'mês passado' para 'last_month'.
+
+    Responda APENAS com o JSON.
 
     Exemplos:
     - Mensagem: "gastei 50 no ifood"
@@ -24,11 +29,11 @@ def get_ai_response(message_text):
     - Mensagem: "quanto gastei de uber semana passada?"
     - JSON: {{"intent": "query_report", "entities": {{"description": "uber", "time_period": "last_week"}}}}
 
-    - Mensagem: "gastos com mercado no mes passado"
-    - JSON: {{"intent": "query_report", "entities": {{"description": "mercado", "time_period": "last_month"}}}}
+    - Mensagem: "gastos com mercado ontem"
+    - JSON: {{"intent": "query_report", "entities": {{"description": "mercado", "time_period": "yesterday"}}}}
 
-    - Mensagem: "recebi 100 reais"
-    - JSON: {{"intent": "register_transaction", "entities": {{"description": "Transação sem descrição", "amount": 100.00, "type": "income"}}}}
+    - Mensagem: "quanto gastei hoje?"
+    - JSON: {{"intent": "query_report", "entities": {{"description": null, "time_period": "today"}}}}
 
     Mensagem do usuário: "{message_text}"
     JSON:
