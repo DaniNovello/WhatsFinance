@@ -1,4 +1,3 @@
-# Arquivo: commands.py (substitua o conteúdo pelo abaixo)
 import db
 
 def handle_command(command, user_id):
@@ -11,21 +10,31 @@ def handle_command(command, user_id):
 
 *Lançamentos:*
 Apenas escreva o que aconteceu.
-Ex: `gastei 50 no ifood no crédito`
+Ex: `gastei 50 no ifood no crédito nubank`
 
 *Contas:*
-`/cadastrar_conta [nome_da_conta]`
-Ex: `/cadastrar_conta Carteira`
-`/saldo` - Mostra o saldo de todas as suas contas.
+`/cadastrar_conta [nome]`
+`/saldo`
+
+*Cartões:*
+`/cadastrar_cartao [nome]`
+Ex: `/cadastrar_cartao Nubank`
+`/fatura [nome]`
 """
     elif cmd == '/cadastrar_conta':
-        if len(parts) < 2:
-            return "Uso incorreto. Ex: `/cadastrar_conta Carteira`"
+        if len(parts) < 2: return "Uso: `/cadastrar_conta [nome]`"
         account_name = " ".join(parts[1:])
         db.create_account(user_id, account_name)
-        return f"✅ Conta '{account_name}' criada com sucesso!"
+        return f"✅ Conta '{account_name}' criada!"
+
+    elif cmd == '/cadastrar_cartao':
+        if len(parts) < 2: return "Uso: `/cadastrar_cartao [nome]`"
+        card_name = " ".join(parts[1:])
+        db.create_credit_card(user_id, card_name)
+        return f"✅ Cartão '{card_name}' criado!"
 
     elif cmd == '/saldo':
+        # ... (código do /saldo que já existe) ...
         accounts = db.get_accounts_balance(user_id)
         if not accounts:
             return "Você ainda não tem contas cadastradas. Use `/cadastrar_conta [nome]`."
@@ -37,5 +46,10 @@ Ex: `/cadastrar_conta Carteira`
             total += acc['balance']
         response_text += f"\n*Total:* R${total:.2f}"
         return response_text
+
+    elif cmd == '/fatura':
+        # Esta é a função que vamos implementar
+        return "Função /fatura ainda em construção!"
+
     else:
-        return "Comando não reconhecido. Digite `/menu` para ver as opções."
+        return "Comando não reconhecido. Digite `/menu`."

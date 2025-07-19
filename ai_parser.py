@@ -2,41 +2,41 @@
 import os
 import google.generativeai as genai
 import json
+from datetime import datetime, timedelta
 
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+model = genai.GenerativeModel(model_name="gemini-1.5-flash")
 
-generation_config = {"temperature": 0.2}
-model = genai.GenerativeModel(model_name="gemini-1.5-flash", generation_config=generation_config)
-
-def parse_transaction_with_ai(message_text):
+def get_ai_response(message_text):
     prompt = f"""
-    Analise a mensagem de finanças e extraia as informações em formato JSON.
-    As chaves são: "description", "amount", "type" ('income' ou 'expense'), e "payment_method".
-    - Se a mensagem for um ganho/entrada (ex: 'recebi', 'salário'), o 'type' é 'income'.
-    - Se for um gasto (ex: 'gastei', 'paguei', 'compra'), o 'type' é 'expense'.
-    - Se a descrição não for clara, tente inferir do contexto (ex: "10 reais de pão" -> "pão"). Se for impossível, use "Transação sem descrição".
-    - O 'amount' deve ser um número.
-    - O 'payment_method' é opcional.
-    - Se não for possível extrair nada, retorne um JSON vazio {{}}.
-    - Retorne APENAS o JSON.
+    Analise a mensagem do usuário e determine a intenção e as entidades.
+    A intenção pode ser 'register_transaction' ou 'query_report'.
+
+    Se a intenção for 'register_transaction', extraia: 'description', 'amount', 'type' ('income' ou 'expense'), e 'payment_method'.
+    Se a intenção for 'query_report', extraia: 'description' (o que foi gasto, ex: 'uber') e um 'time_period' ('last_week', 'last_month', 'today', 'yesterday').
+
+    Responda em formato JSON.
 
     Exemplos:
-    - Mensagem: "gastei 50 reais no ifood com o cartão de crédito"
-    - JSON: {{"description": "ifood", "amount": 50.00, "type": "expense", "payment_method": "credit"}}
-    - Mensagem: "recebi 10 reais"
-    - JSON: {{"description": "Transação sem descrição", "amount": 10.00, "type": "income", "payment_method": null}}
-    - Mensagem: "recebi 70 reais conta itaú"
-    - JSON: {{"description": "conta itaú", "amount": 70.00, "type": "income", "payment_method": null}}
+    - Mensagem: "gastei 50 no ifood"
+    - JSON: {{"intent": "register_transaction", "entities": {{"description": "ifood", "amount": 50.00, "type": "expense"}}}}
+    
+    - Mensagem: "quanto gastei de uber semana passada?"
+    - JSON: {{"intent": "query_report", "entities": {{"description": "uber", "time_period": "last_week"}}}}
 
-    Agora, analise a mensagem: "{message_text}"
+    - Mensagem: "gastos com mercado no mes passado"
+    - JSON: {{"intent": "query_report", "entities": {{"description": "mercado", "time_period": "last_month"}}}}
+
+    - Mensagem: "recebi 100 reais"
+    - JSON: {{"intent": "register_transaction", "entities": {{"description": "Transação sem descrição", "amount": 100.00, "type": "income"}}}}
+
+    Mensagem do usuário: "{message_text}"
     JSON:
     """
     try:
         response = model.generate_content(prompt)
         cleaned_response = response.text.strip().replace("`", "").replace("json", "")
-        if not cleaned_response:
-            return {}
         return json.loads(cleaned_response)
     except Exception as e:
         print(f"Erro Crítico na IA: {e}")
-        return {} # Retorna um dicionário vazio em caso de erro
+        return None
