@@ -33,7 +33,7 @@ def format_detailed_report(transactions):
 
 def handle_command(command, user_id):
     parts = command.split(' ')
-    cmd = parts[0]
+    cmd = parts[0].lstrip('/')
 
     if cmd == '/menu' or cmd == '/ajuda':
         return """
