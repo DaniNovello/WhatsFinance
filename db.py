@@ -1,6 +1,5 @@
-# Arquivo: db.py
 import os
-from datetime import datetime, timedelta # <-- A IMPORTAÇÃO QUE FALTAVA
+from datetime import datetime, timedelta, date # <-- A CORREÇÃO ESTÁ AQUI
 from supabase import create_client, Client
 import calendar
 
@@ -47,26 +46,7 @@ def process_transaction_with_rpc(user_id, data):
         print(f"Erro no RPC da transação: {e}")
         return False
 
-def get_report(user_id, description, time_period):
-    """Busca um relatório de gastos com base nos parâmetros."""
-    today = datetime.now()
-    end_date = today
-
-    if time_period == 'last_week':
-        start_date = today - timedelta(days=7)
-    elif time_period == 'last_month':
-        start_date = today - timedelta(days=30)
-    elif time_period == 'today':
-        start_date = today.replace(hour=0, minute=0, second=0)
-    elif time_period == 'yesterday': # <-- NOVA LÓGICA
-        yesterday = today - timedelta(days=1)
-        start_date = yesterday.replace(hour=0, minute=0, second=0)
-        end_date = yesterday.replace(hour=23, minute=59, second=59)
-    else:
-        return 0 # Período não suportado por enquanto
-
 def get_date_range(time_period):
-    """Calcula o intervalo de datas com base no período de tempo."""
     today = date.today()
     if time_period == 'today':
         return today, today
@@ -74,11 +54,11 @@ def get_date_range(time_period):
         yesterday = today - timedelta(days=1)
         return yesterday, yesterday
     if time_period == 'this_week':
-        start_of_week = today - timedelta(days=today.weekday()) # Segunda-feira
+        start_of_week = today - timedelta(days=today.weekday())
         return start_of_week, today
     if time_period == 'last_week':
-        end_of_last_week = today - timedelta(days=today.weekday() + 1) # Sábado passado
-        start_of_last_week = end_of_last_week - timedelta(days=6) # Segunda da semana passada
+        end_of_last_week = today - timedelta(days=today.weekday() + 1)
+        start_of_last_week = end_of_last_week - timedelta(days=6)
         return start_of_last_week, end_of_last_week
     if time_period == 'this_month':
         start_of_month = today.replace(day=1)
@@ -91,13 +71,11 @@ def get_date_range(time_period):
     return None, None
 
 def get_report(user_id, description, time_period):
-    """Busca um relatório de gastos simples (soma total)."""
     start_date, end_date = get_date_range(time_period)
     if not start_date:
         return 0
 
     end_date_str = (end_date + timedelta(days=1)).isoformat()
-
     query = supabase.table('transactions').select('amount', count='exact').eq('user_id', user_id).eq('type', 'expense').gte('transaction_date', start_date.isoformat()).lt('transaction_date', end_date_str)
     
     if description:
@@ -107,20 +85,11 @@ def get_report(user_id, description, time_period):
     return sum(float(item['amount']) for item in response.data) if response.data else 0
 
 def get_detailed_report(user_id, time_period):
-    """Busca dados detalhados para os relatórios de fechamento."""
     start_date, end_date = get_date_range(time_period)
     if not start_date:
-        return None
+        return []
 
     end_date_str = (end_date + timedelta(days=1)).isoformat()
-
     response = supabase.table('transactions').select('description, amount, transaction_date').eq('user_id', user_id).eq('type', 'expense').gte('transaction_date', start_date.isoformat()).lt('transaction_date', end_date_str).order('transaction_date').execute()
     
     return response.data if response.data else []
-
-    response = supabase.table('transactions').select('amount').eq('user_id', user_id).ilike('description', f'%{description}%').gte('transaction_date', start_date.isoformat()).lte('transaction_date', end_date.isoformat()).execute()
-    
-    if response.data:
-        total = sum(float(item['amount']) for item in response.data)
-        return total
-    return 0
