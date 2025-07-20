@@ -12,6 +12,15 @@ import ai_parser
 load_dotenv()
 app = Flask(__name__)
 
+# Endpoint /health para pingar a cada 5 minutos e manter render ativo
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Endpoint simples para o UptimeRobot manter o bot acordado."""
+    return "OK", 200
+
+# Fim
+
 user_state = {}
 
 @app.route('/webhook', methods=['POST'])
