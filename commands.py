@@ -1,7 +1,10 @@
+# Arquivo: commands.py (Versão Corrigida e Mais Robusta)
+
 import db
+from datetime import datetime
 
 def format_detailed_report(transactions):
-    """Formata a lista de transações em um relatório bonito."""
+    """Formata a lista de transações em um relatório bonito e seguro."""
     if not transactions:
         return "Nenhum gasto registrado no período."
 
@@ -11,31 +14,41 @@ def format_detailed_report(transactions):
 
     # Lista de transações
     for trans in transactions:
-        trans_date = datetime.fromisoformat(trans['transaction_date']).strftime('%d/%m/%y')
-        description = trans['description']
-        amount = float(trans['amount'])
+        # LÓGICA DE SEGURANÇA: Garante que os campos existem e não são nulos
+        trans_date_str = trans.get('transaction_date')
+        description = trans.get('description', 'Sem descrição') # Usa um valor padrão se for nulo
+        amount = float(trans.get('amount', 0))
+
+        if not trans_date_str:
+            continue # Pula esta transação se a data for nula
+
+        trans_date = datetime.fromisoformat(trans_date_str).strftime('%d/%m/%y')
         
         report_lines.append(f"- {description.capitalize()}: R${amount:.2f} ({trans_date})")
         
         category_totals[description] = category_totals.get(description, 0) + amount
         grand_total += amount
     
+    if not report_lines:
+        return "Nenhum gasto válido encontrado no período."
+
     # Resumo por categoria
     summary_lines = ["\n*Resumo por Categoria:*"]
     for category, total in sorted(category_totals.items(), key=lambda item: item[1], reverse=True):
         summary_lines.append(f"- {category.capitalize()}: R${total:.2f}")
 
     # Total geral
-    final_report = "\n".join(report_lines) + "\n" + "\n".join(summary_lines)
+    final_report = "\n".join(report_lines) + "\n\n" + "\n".join(summary_lines)
     final_report += f"\n\n*Gasto Total:* R${grand_total:.2f}"
     
     return final_report
 
 def handle_command(command, user_id):
     parts = command.split(' ')
-    cmd = parts[0].lstrip('/')
+    cmd = parts[0].lstrip('/') # Remove a barra '/' do início, se ela existir
 
-    if cmd == '/menu' or cmd == '/ajuda':
+    # -- Comandos de Cadastro --
+    if cmd == 'menu' or cmd == 'ajuda':
         return """
 🤖 *Menu de Comandos* 🤖
 
@@ -49,23 +62,26 @@ Ex: `gastei 50 no ifood no crédito nubank`
 
 *Cartões:*
 `/cadastrar_cartao [nome]`
-Ex: `/cadastrar_cartao Nubank`
 `/fatura [nome]`
+
+*Relatórios:*
+`/gerar_relatorio_semanal_detalhado`
+`/gerar_relatorio_mensal_detalhado`
 """
-    elif cmd == '/cadastrar_conta':
+    elif cmd == 'cadastrar_conta':
         if len(parts) < 2: return "Uso: `/cadastrar_conta [nome]`"
         account_name = " ".join(parts[1:])
         db.create_account(user_id, account_name)
         return f"✅ Conta '{account_name}' criada!"
 
-    elif cmd == '/cadastrar_cartao':
+    elif cmd == 'cadastrar_cartao':
         if len(parts) < 2: return "Uso: `/cadastrar_cartao [nome]`"
         card_name = " ".join(parts[1:])
         db.create_credit_card(user_id, card_name)
         return f"✅ Cartão '{card_name}' criado!"
 
-    elif cmd == '/saldo':
-        # ... (código do /saldo que já existe) ...
+    # -- Comandos de Consulta --
+    elif cmd == 'saldo':
         accounts = db.get_accounts_balance(user_id)
         if not accounts:
             return "Você ainda não tem contas cadastradas. Use `/cadastrar_conta [nome]`."
@@ -77,17 +93,20 @@ Ex: `/cadastrar_cartao Nubank`
             total += acc['balance']
         response_text += f"\n*Total:* R${total:.2f}"
         return response_text
-
-    elif cmd == '/fatura':
-        # Esta é a função que vamos implementar
-        return "Função /fatura ainda em construção!"
-    if cmd == '/gerar_relatorio_semanal_detalhado':
+    
+    # -- Comandos de Relatório --
+    # CORREÇÃO AQUI: removi a barra '/' da comparação
+    elif cmd == 'gerar_relatorio_semanal_detalhado':
         transactions = db.get_detailed_report(user_id, 'last_week')
-        return "*Relatório Semanal de Gastos*\n" + format_detailed_report(transactions)
+        return "*--- Relatório Semanal de Gastos ---*\n\n" + format_detailed_report(transactions)
 
-    elif cmd == '/gerar_relatorio_mensal_detalhado':
+    # CORREÇÃO AQUI: removi a barra '/' da comparação
+    elif cmd == 'gerar_relatorio_mensal_detalhado':
         transactions = db.get_detailed_report(user_id, 'last_month')
-        return "*Relatório Mensal de Gastos*\n" + format_detailed_report(transactions)
+        return "*--- Relatório Mensal de Gastos ---*\n\n" + format_detailed_report(transactions)
+
+    elif cmd == 'fatura':
+        return "Função /fatura ainda em construção!"
 
     else:
-        return "Comando não reconhecido. Digite `/menu`."
+        return "Comando não reconhecido. Digite /menu."
