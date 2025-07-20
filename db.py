@@ -2,6 +2,7 @@
 import os
 from datetime import datetime, timedelta # <-- A IMPORTAÇÃO QUE FALTAVA
 from supabase import create_client, Client
+import calendar
 
 url: str = os.environ.get("SUPABASE_URL")
 key: str = os.environ.get("SUPABASE_KEY")
@@ -63,6 +64,59 @@ def get_report(user_id, description, time_period):
         end_date = yesterday.replace(hour=23, minute=59, second=59)
     else:
         return 0 # Período não suportado por enquanto
+
+def get_date_range(time_period):
+    """Calcula o intervalo de datas com base no período de tempo."""
+    today = date.today()
+    if time_period == 'today':
+        return today, today
+    if time_period == 'yesterday':
+        yesterday = today - timedelta(days=1)
+        return yesterday, yesterday
+    if time_period == 'this_week':
+        start_of_week = today - timedelta(days=today.weekday()) # Segunda-feira
+        return start_of_week, today
+    if time_period == 'last_week':
+        end_of_last_week = today - timedelta(days=today.weekday() + 1) # Sábado passado
+        start_of_last_week = end_of_last_week - timedelta(days=6) # Segunda da semana passada
+        return start_of_last_week, end_of_last_week
+    if time_period == 'this_month':
+        start_of_month = today.replace(day=1)
+        return start_of_month, today
+    if time_period == 'last_month':
+        first_day_of_current_month = today.replace(day=1)
+        last_day_of_last_month = first_day_of_current_month - timedelta(days=1)
+        first_day_of_last_month = last_day_of_last_month.replace(day=1)
+        return first_day_of_last_month, last_day_of_last_month
+    return None, None
+
+def get_report(user_id, description, time_period):
+    """Busca um relatório de gastos simples (soma total)."""
+    start_date, end_date = get_date_range(time_period)
+    if not start_date:
+        return 0
+
+    end_date_str = (end_date + timedelta(days=1)).isoformat()
+
+    query = supabase.table('transactions').select('amount', count='exact').eq('user_id', user_id).eq('type', 'expense').gte('transaction_date', start_date.isoformat()).lt('transaction_date', end_date_str)
+    
+    if description:
+        query = query.ilike('description', f'%{description}%')
+    
+    response = query.execute()
+    return sum(float(item['amount']) for item in response.data) if response.data else 0
+
+def get_detailed_report(user_id, time_period):
+    """Busca dados detalhados para os relatórios de fechamento."""
+    start_date, end_date = get_date_range(time_period)
+    if not start_date:
+        return None
+
+    end_date_str = (end_date + timedelta(days=1)).isoformat()
+
+    response = supabase.table('transactions').select('description, amount, transaction_date').eq('user_id', user_id).eq('type', 'expense').gte('transaction_date', start_date.isoformat()).lt('transaction_date', end_date_str).order('transaction_date').execute()
+    
+    return response.data if response.data else []
 
     response = supabase.table('transactions').select('amount').eq('user_id', user_id).ilike('description', f'%{description}%').gte('transaction_date', start_date.isoformat()).lte('transaction_date', end_date.isoformat()).execute()
     

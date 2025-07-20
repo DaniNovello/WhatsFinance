@@ -12,28 +12,22 @@ def get_ai_response(message_text):
     Você é um assistente financeiro. Sua tarefa é analisar a mensagem do usuário e retornar um JSON estruturado.
     A intenção do usuário pode ser 'register_transaction' ou 'query_report'.
 
-    1. Se a intenção for 'register_transaction':
-       - Extraia 'description', 'amount', 'type' ('income' ou 'expense'), e 'payment_method'.
-       - Se a descrição não for clara, use "Transação sem descrição".
-
-    2. Se a intenção for 'query_report':
-       - Extraia 'description' (o que foi gasto). Se for um gasto geral (ex: "quanto gastei"), retorne a descrição como null.
-       - Extraia um 'time_period'. Mapeie palavras como 'hoje' para 'today', 'ontem' para 'yesterday', 'semana passada' para 'last_week', 'mês passado' para 'last_month'.
+    1. Se for 'register_transaction', extraia: 'description', 'amount', 'type', 'payment_method'.
+    2. Se for 'query_report', extraia: 'description' (o que foi gasto, ou null se for geral) e um 'time_period'.
+       - Mapeie 'hoje' para 'today'.
+       - Mapeie 'ontem' para 'yesterday'.
+       - Mapeie 'essa semana' ou 'esta semana' para 'this_week'.
+       - Mapeie 'semana passada' para 'last_week'.
+       - Mapeie 'esse mês' ou 'este mês' para 'this_month'.
+       - Mapeie 'mês passado' para 'last_month'.
 
     Responda APENAS com o JSON.
 
     Exemplos:
-    - Mensagem: "gastei 50 no ifood"
-    - JSON: {{"intent": "register_transaction", "entities": {{"description": "ifood", "amount": 50.00, "type": "expense"}}}}
-    
-    - Mensagem: "quanto gastei de uber semana passada?"
-    - JSON: {{"intent": "query_report", "entities": {{"description": "uber", "time_period": "last_week"}}}}
-
-    - Mensagem: "gastos com mercado ontem"
-    - JSON: {{"intent": "query_report", "entities": {{"description": "mercado", "time_period": "yesterday"}}}}
-
-    - Mensagem: "quanto gastei hoje?"
-    - JSON: {{"intent": "query_report", "entities": {{"description": null, "time_period": "today"}}}}
+    - Mensagem: "quanto gastei essa semana?"
+    - JSON: {{"intent": "query_report", "entities": {{"description": null, "time_period": "this_week"}}}}
+    - Mensagem: "gastos com mercado este mês"
+    - JSON: {{"intent": "query_report", "entities": {{"description": "mercado", "time_period": "this_month"}}}}
 
     Mensagem do usuário: "{message_text}"
     JSON:

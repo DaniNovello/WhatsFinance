@@ -73,16 +73,21 @@ def webhook():
                         time_period = entities.get('time_period')
                         
                         if not time_period:
-                            message.body("Para relatórios, por favor, diga o que e quando. Ex: 'gastos de hoje'")
+                            message.body("Para relatórios, por favor, me diga o período. Ex: 'gastos de hoje'")
                         else:
-                            total = db.get_report(user['id'], description, time_period)
-                            period_text = {"last_week": "na última semana", "last_month": "no último mês", "today": "hoje", "yesterday": "ontem"}
+                            total = db.get_report(user['id'], description, time_period) # <-- Usando a função de soma simples
+                            
+                            period_text = {
+                                "today": "hoje", "yesterday": "ontem", 
+                                "this_week": "esta semana", "last_week": "na última semana",
+                                "this_month": "este mês", "last_month": "no último mês"
+                            }
                             
                             if description:
                                 message.body(f"Você gastou R${total:.2f} com '{description}' {period_text.get(time_period, '')}.")
                             else:
                                 message.body(f"Seu gasto total {period_text.get(time_period, '')} foi de R${total:.2f}.")
-                    
+                            
                     else:
                         message.body("Não entendi. Você quer registrar um gasto ou fazer uma pergunta?")
 
