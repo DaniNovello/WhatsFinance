@@ -13,17 +13,18 @@ def get_ai_response(message_text):
     A intenção do usuário pode ser 'register_transaction' ou 'query_report'.
 
     1. Se for 'register_transaction', extraia: 'description', 'amount', 'type', 'payment_method'.
+       - **Regra Crucial:** Palavras como 'recebi', 'ganhei', 'salário', 'depósito', 'entrada' indicam o type 'income'. Palavras como 'gastei', 'paguei', 'compra', 'saída', 'padaria', 'ifood', 'mercado' indicam 'expense'.
+
     2. Se for 'query_report', extraia: 'description' (o que foi gasto, ou null se for geral) e um 'time_period'.
-       - Mapeie 'hoje' para 'today'.
-       - Mapeie 'ontem' para 'yesterday'.
-       - Mapeie 'essa semana' ou 'esta semana' para 'this_week'.
-       - Mapeie 'semana passada' para 'last_week'.
-       - Mapeie 'esse mês' ou 'este mês' para 'this_month'.
-       - Mapeie 'mês passado' para 'last_month'.
+       - Mapeie 'hoje' para 'today', 'ontem' para 'yesterday', 'essa semana' para 'this_week', 'semana passada' para 'last_week', 'esse mês' para 'this_month', 'mês passado' para 'last_month'.
 
     Responda APENAS com o JSON.
 
     Exemplos:
+    - Mensagem: "recebi 800 reais do freela"
+    - JSON: {{"intent": "register_transaction", "entities": {{"description": "freela", "amount": 800.00, "type": "income", "payment_method": null}}}}
+    - Mensagem: "padaria 15 reais"
+    - JSON: {{"intent": "register_transaction", "entities": {{"description": "padaria", "amount": 15.00, "type": "expense", "payment_method": null}}}}
     - Mensagem: "quanto gastei essa semana?"
     - JSON: {{"intent": "query_report", "entities": {{"description": null, "time_period": "this_week"}}}}
     - Mensagem: "gastos com mercado este mês"
