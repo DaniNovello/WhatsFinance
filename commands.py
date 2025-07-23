@@ -84,7 +84,7 @@ Apenas escreva o que aconteceu.
             return "Nenhum lançamento recente encontrado."
         response_text = "*Seus Últimos Lançamentos:*\n\n"
         for t in last_trans:
-            tipo = "⬆️" if t.get('type') == 'income' else "⬇️"
+            tipo = "✅" if t.get('type') == 'income' else "❌"
             description_text = t.get('description') or "Sem descrição"
             desc = description_text.capitalize()
             response_text += f"{tipo} *ID {t.get('id')}:* {desc} - R${t.get('amount', 0):.2f}\n"
