@@ -1,3 +1,4 @@
+# Arquivo: commands.py
 import db
 from datetime import datetime
 
@@ -9,7 +10,8 @@ def format_detailed_report(transactions):
     grand_total = 0
     for trans in transactions:
         try:
-            desc = trans.get('description', 'Sem descrição').capitalize()
+            description_text = trans.get('description') or "Sem descrição"
+            desc = description_text.capitalize()
             amount = float(trans.get('amount', 0))
             trans_date = datetime.fromisoformat(trans.get('transaction_date')).strftime('%d/%m/%y')
             report_lines.append(f"- {desc}: R${amount:.2f} ({trans_date})")
@@ -30,7 +32,6 @@ def handle_command(command, user_id):
     parts = command.split(' ')
     cmd = parts[0].lstrip('/')
 
-    # --- MENU ---
     if cmd in ['menu', 'ajuda']:
         return """
 🤖 *Menu de Comandos* 🤖
@@ -54,7 +55,6 @@ Apenas escreva o que aconteceu.
 `/relatorio_semana_passada`
 `/relatorio_mes_passado`
 """
-    # --- CADASTROS ---
     elif cmd == 'cadastrar_conta':
         if len(parts) < 2: return "Uso: `/cadastrar_conta [nome]`"
         account_name = " ".join(parts[1:])
@@ -66,7 +66,6 @@ Apenas escreva o que aconteceu.
         db.create_credit_card(user_id, card_name)
         return f"✅ Cartão '{card_name}' criado!"
 
-    # --- CONSULTAS ---
     elif cmd == 'saldo':
         accounts = db.get_accounts_balance(user_id)
         if not accounts: return "Você ainda não tem contas cadastradas."
@@ -79,7 +78,6 @@ Apenas escreva o que aconteceu.
     elif cmd == 'fatura':
         return "Função /fatura ainda em construção!"
 
-    # --- GESTÃO DE LANÇAMENTOS (NOVO) ---
     elif cmd == 'ultimos':
         last_trans = db.get_last_transactions(user_id)
         if not last_trans:
@@ -87,7 +85,8 @@ Apenas escreva o que aconteceu.
         response_text = "*Seus Últimos Lançamentos:*\n\n"
         for t in last_trans:
             tipo = "⬆️" if t.get('type') == 'income' else "⬇️"
-            desc = t.get('description', 'N/A').capitalize()
+            description_text = t.get('description') or "Sem descrição"
+            desc = description_text.capitalize()
             response_text += f"{tipo} *ID {t.get('id')}:* {desc} - R${t.get('amount', 0):.2f}\n"
         response_text += "\nPara apagar, use `/apagar [ID]`"
         return response_text
@@ -101,7 +100,6 @@ Apenas escreva o que aconteceu.
         else:
             return "❌ Erro ao apagar o lançamento. Verifique se o ID está correto."
 
-    # --- RELATÓRIOS ---
     elif cmd == 'relatorio_esta_semana':
         transactions = db.get_detailed_report(user_id, 'this_week')
         return "*--- Relatório desta Semana ---*\n\n" + format_detailed_report(transactions)
@@ -115,6 +113,5 @@ Apenas escreva o que aconteceu.
         transactions = db.get_detailed_report(user_id, 'last_month')
         return "*--- Relatório do Mês Passado ---*\n\n" + format_detailed_report(transactions)
         
-    # --- FALLBACK ---
     else:
         return "Comando não reconhecido. Digite /menu."

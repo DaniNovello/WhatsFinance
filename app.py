@@ -1,8 +1,7 @@
-# Arquivo: app.py (Versão Corrigida e Estável)
-
+# Arquivo: app.py
 import os
 from flask import Flask, request
-from twilio.twiml.messaging_response import MessagingResponse # <- Voltamos a usar este
+from twilio.twiml.messaging_response import MessagingResponse
 from dotenv import load_dotenv
 
 import db
@@ -12,14 +11,9 @@ import ai_parser
 load_dotenv()
 app = Flask(__name__)
 
-# Endpoint /health para pingar a cada 5 minutos e manter render ativo
-
 @app.route('/health', methods=['GET'])
 def health_check():
-    """Endpoint simples para o UptimeRobot manter o bot acordado."""
     return "OK", 200
-
-# Fim
 
 user_state = {}
 
@@ -28,7 +22,6 @@ def webhook():
     incoming_msg = request.values.get('Body', '').strip()
     sender_phone = request.values.get('From', '').replace('whatsapp:', '')
     
-    # Prepara a resposta usando o método TwiML
     response = MessagingResponse()
     message = response.message()
 
@@ -36,16 +29,31 @@ def webhook():
         user = db.get_user_by_phone(sender_phone)
 
         if not user:
-            # Lógica de cadastro de novo usuário (continua igual)
+            # Lógica de cadastro
             if user_state.get(sender_phone) == 'awaiting_name':
                 new_user = db.create_user(sender_phone, incoming_msg)
-                message.body(f"Ótimo, {new_user['name']}! Seu cadastro foi concluído. Digite /menu para começar.")
+                message.body(f"Ótimo, {new_user['name']}! Cadastro concluído. Digite /menu.")
                 del user_state[sender_phone]
             else:
-                message.body("Olá! Bem-vindo(a) ao seu gestor financeiro. Para começar, por favor, me diga seu nome.")
+                message.body("Olá! Para começar, me diga seu nome.")
                 user_state[sender_phone] = 'awaiting_name'
+
+        # Lógica de conversa para pedir descrição
+        elif user_state.get(sender_phone) and user_state[sender_phone].get('state') == 'awaiting_description':
+            partial_transaction = user_state[sender_phone]['data']
+            partial_transaction['description'] = incoming_msg
+            
+            success = db.process_transaction_with_rpc(user['id'], partial_transaction)
+            if success:
+                amount = float(partial_transaction.get('amount', 0))
+                tipo = "Entrada" if partial_transaction.get('type') == 'income' else "Gasto"
+                message.body(f"✅ {tipo} de R${amount:.2f} em '{incoming_msg}' registrado!")
+            else:
+                message.body("❌ Erro ao salvar a transação completa.")
+            del user_state[sender_phone]
+
         else:
-            # Usuário já existe, processa a mensagem
+            # Fluxo normal
             if incoming_msg.lower().startswith('/'):
                 response_text = commands.handle_command(incoming_msg.lower(), user['id'])
                 message.body(response_text)
@@ -54,11 +62,10 @@ def webhook():
 
                 if not ai_data:
                     message.body("😕 Desculpe, não consegui processar sua solicitação.")
-                else:
-                    intent = ai_data.get('intent')
+                elif ai_data.get('intent') == 'register_transaction':
                     entities = ai_data.get('entities', {})
-
-                    if intent == 'register_transaction':
+                    if entities.get('description'):
+                        # Se a descrição já veio, registra direto
                         success = db.process_transaction_with_rpc(user['id'], entities)
                         if success:
                             desc = entities.get('description', 'N/A')
@@ -66,36 +73,33 @@ def webhook():
                             tipo = "Entrada" if entities.get('type') == 'income' else "Gasto"
                             message.body(f"✅ {tipo} de R${amount:.2f} em '{desc}' registrado!")
                         else:
-                            message.body("Ops! Para registrar, você precisa ter uma conta. Use `/cadastrar_conta [nome]`.")
-                    
-                    elif intent == 'query_report':
-                        description = entities.get('description')
-                        time_period = entities.get('time_period')
-                        
-                        if not time_period:
-                            message.body("Para relatórios, por favor, me diga o período. Ex: 'gastos de hoje'")
-                        else:
-                            total = db.get_report(user['id'], description, time_period) # <-- Usando a função de soma simples
-                            
-                            period_text = {
-                                "today": "hoje", "yesterday": "ontem", 
-                                "this_week": "esta semana", "last_week": "na última semana",
-                                "this_month": "este mês", "last_month": "no último mês"
-                            }
-                            
-                            if description:
-                                message.body(f"Você gastou R${total:.2f} com '{description}' {period_text.get(time_period, '')}.")
-                            else:
-                                message.body(f"Seu gasto total {period_text.get(time_period, '')} foi de R${total:.2f}.")
-                            
+                            message.body("Ops! Para registrar, você precisa ter uma conta.")
                     else:
-                        message.body("Não entendi. Você quer registrar um gasto ou fazer uma pergunta?")
+                        # Se falta a descrição, inicia a conversa
+                        user_state[sender_phone] = {'state': 'awaiting_description', 'data': entities}
+                        amount = float(entities.get('amount', 0))
+                        tipo = "Entrada" if entities.get('type') == 'income' else "Gasto"
+                        message.body(f"{tipo} de R${amount:.2f} registrada. Com o que foi?")
+                
+                elif ai_data.get('intent') == 'query_report':
+                    # Lógica de relatórios por texto
+                    entities = ai_data.get('entities', {})
+                    description = entities.get('description')
+                    time_period = entities.get('time_period')
+                    if not time_period:
+                        message.body("Para relatórios, por favor, me diga o período. Ex: 'gastos de hoje'")
+                    else:
+                        total = db.get_report(user['id'], description, time_period)
+                        period_text = {"last_week": "na última semana", "last_month": "no último mês", "today": "hoje", "yesterday": "ontem", "this_week": "esta semana", "this_month": "este mês"}
+                        if description:
+                            message.body(f"Você gastou R${total:.2f} com '{description}' {period_text.get(time_period, '')}.")
+                        else:
+                            message.body(f"Seu gasto total {period_text.get(time_period, '')} foi de R${total:.2f}.")
 
     except Exception as e:
         print(f"!!!!!!!! ERRO INESPERADO: {e} !!!!!!!!")
         message.body("🤖 Ops! Encontrei um erro interno. Tente novamente em um instante.")
 
-    # Retorna a resposta formatada para o Twilio
     return str(response)
 
 if __name__ == '__main__':
