@@ -1,5 +1,6 @@
 import db
 from datetime import datetime
+import ai_parser
 
 def format_detailed_report(transactions):
     if not transactions:
@@ -50,6 +51,10 @@ def handle_command(command, user_id):
 `/relatorio_esta_semana`
 `/relatorio_semana_passada`
 """
+    # --- NOVO COMANDO ---
+    elif cmd == 'gerar_conselho_financeiro':
+        return ai_parser.get_financial_advice()
+
     elif cmd == 'cadastrar_conta':
         if len(parts) < 2: return "Uso: `/cadastrar_conta [nome]`"
         account_name = " ".join(parts[1:])
@@ -95,7 +100,7 @@ def handle_command(command, user_id):
     elif cmd == 'editar':
         try:
             trans_id = int(parts[1])
-            edit_type = parts[2].lower() # 'valor' ou 'desc'
+            edit_type = parts[2].lower()
             new_value = " ".join(parts[3:])
 
             if edit_type == 'valor':

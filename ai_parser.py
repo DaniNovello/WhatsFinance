@@ -1,4 +1,3 @@
-# Arquivo: ai_parser.py
 import os
 import google.generativeai as genai
 import json
@@ -40,3 +39,20 @@ def get_ai_response(message_text):
     except Exception as e:
         print(f"Erro Crítico na IA: {e}")
         return None
+
+# --- NOVA FUNÇÃO ---
+def get_financial_advice():
+    """Usa a IA para gerar um conselho financeiro original."""
+    prompt = """
+    Você é um coach financeiro. Crie um conselho financeiro original, curto e prático para o fim de semana. 
+    Use uma linguagem amigável e motivacional. Formate a resposta com um título em negrito e emojis.
+    Exemplo:
+    *💡 Planeje seus Gastos de Lazer*
+    Antes de sair, defina um orçamento para o seu fim de semana. Saber quanto você pode gastar em restaurantes ou passeios ajuda a evitar surpresas na segunda-feira!
+    """
+    try:
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        print(f"Erro ao gerar conselho financeiro: {e}")
+        return "Hoje a dica é: sempre revise seu orçamento. Um bom planejamento é a chave para a tranquilidade financeira!"
