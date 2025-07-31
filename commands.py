@@ -1,6 +1,7 @@
+# Arquivo: commands.py
 import db
 from datetime import datetime
-import ai_parser
+import ai_parser # Importamos o ai_parser para usar a nova função
 
 def format_detailed_report(transactions):
     if not transactions:
@@ -36,10 +37,8 @@ def handle_command(command, user_id):
 🤖 *Menu de Comandos* 🤖
 
 *Gestão de Lançamentos:*
-`/ultimos` - Lista seus 5 últimos lançamentos.
-`/apagar [ID]` - Apaga um lançamento.
-`/editar [ID] valor [novo valor]`
-`/editar [ID] desc [nova descrição]`
+`/ultimos` - Lista seus últimos 5 lançamentos.
+`/apagar [ID]` - Apaga um lançamento pelo ID.
 
 *Contas e Cartões:*
 `/cadastrar_conta [nome]`
@@ -51,8 +50,8 @@ def handle_command(command, user_id):
 `/relatorio_esta_semana`
 `/relatorio_semana_passada`
 """
-    # --- NOVO COMANDO ---
-    elif cmd == 'gerar_conselho_financeiro':
+    # --- NOVO COMANDO "SECRETO" PARA TESTE ---
+    elif cmd == 'conselho':
         return ai_parser.get_financial_advice()
 
     elif cmd == 'cadastrar_conta':
@@ -80,49 +79,34 @@ def handle_command(command, user_id):
 
     elif cmd == 'ultimos':
         last_trans = db.get_last_transactions(user_id)
-        if not last_trans: return "Nenhum lançamento recente encontrado."
+        if not last_trans:
+            return "Nenhum lançamento recente encontrado."
         response_text = "*Seus Últimos Lançamentos:*\n\n"
         for t in last_trans:
             tipo = "⬆️" if t.get('type') == 'income' else "⬇️"
             desc = (t.get('description') or "Sem descrição").capitalize()
             response_text += f"{tipo} *ID {t.get('id')}:* {desc} - R${t.get('amount', 0):.2f}\n"
-        response_text += "\nPara gerenciar, use `/apagar [ID]` ou `/editar [ID] ...`"
+        response_text += "\nPara apagar, use `/apagar [ID]`"
         return response_text
-        
     elif cmd == 'apagar':
         if len(parts) < 2 or not parts[1].isdigit():
             return "Uso incorreto. Ex: `/apagar 123`"
         trans_id_to_delete = int(parts[1])
         success = db.delete_transaction(trans_id_to_delete, user_id)
-        if success: return f"✅ Lançamento com ID {trans_id_to_delete} apagado com sucesso!"
-        else: return "❌ Erro ao apagar o lançamento. Verifique se o ID está correto."
-
-    elif cmd == 'editar':
-        try:
-            trans_id = int(parts[1])
-            edit_type = parts[2].lower()
-            new_value = " ".join(parts[3:])
-
-            if edit_type == 'valor':
-                success = db.edit_transaction(user_id=user_id, transaction_id=trans_id, new_amount=float(new_value))
-            elif edit_type == 'desc':
-                success = db.edit_transaction(user_id=user_id, transaction_id=trans_id, new_description=new_value)
-            else:
-                return "Uso incorreto. Tente `/editar [ID] valor [novo valor]` ou `/editar [ID] desc [nova descrição]`"
-            
-            if success:
-                return f"✅ Lançamento ID {trans_id} atualizado com sucesso!"
-            else:
-                return f"❌ Erro ao atualizar o lançamento ID {trans_id}. Verifique se o ID está correto."
-        except (IndexError, ValueError):
-            return "Formato do comando incorreto. Use os exemplos do menu."
+        if success:
+            return f"✅ Lançamento com ID {trans_id_to_delete} apagado com sucesso!"
+        else:
+            return "❌ Erro ao apagar o lançamento. Verifique se o ID está correto."
 
     elif cmd == 'relatorio_esta_semana':
         transactions = db.get_detailed_report(user_id, 'this_week')
         return "*--- Relatório desta Semana ---*\n\n" + format_detailed_report(transactions)
-    elif cmd in ['relatorio_semana_passada']:
+    elif cmd in ['gerar_relatorio_semanal_detalhado', 'relatorio_semana_passada']:
         transactions = db.get_detailed_report(user_id, 'last_week')
         return "*--- Relatório da Semana Passada ---*\n\n" + format_detailed_report(transactions)
+    elif cmd in ['gerar_relatorio_mensal_detalhado', 'relatorio_mes_passado']:
+        transactions = db.get_detailed_report(user_id, 'last_month')
+        return "*--- Relatório do Mês Passado ---*\n\n" + format_detailed_report(transactions)
         
     else:
         return "Comando não reconhecido. Digite /menu."
