@@ -4,3 +4,4 @@ supabase
 python-dotenv
 gunicorn
 google-generativeai
+Pillow
