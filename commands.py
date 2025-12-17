@@ -1,112 +1,125 @@
 # Arquivo: commands.py
 import db
 from datetime import datetime
-import ai_parser # Importamos o ai_parser para usar a nova função
+import ai_parser
 
 def format_detailed_report(transactions):
     if not transactions:
         return "Nenhum gasto registrado no período."
-    report_lines = ["*Lista de Gastos:*"]
+    
+    report_lines = ["*📝 Extrato do Período:*"]
     category_totals = {}
     grand_total = 0
+    
     for trans in transactions:
         try:
             desc = (trans.get('description') or "Sem descrição").capitalize()
             amount = float(trans.get('amount', 0))
-            trans_date = datetime.fromisoformat(trans.get('transaction_date')).strftime('%d/%m/%y')
-            report_lines.append(f"- {desc}: R${amount:.2f} ({trans_date})")
-            category_totals[desc] = category_totals.get(desc, 0) + amount
+            # Tratamento de data seguro
+            t_date = trans.get('transaction_date')
+            if t_date:
+                data_fmt = datetime.fromisoformat(t_date).strftime('%d/%m')
+            else:
+                data_fmt = "--/--"
+            
+            report_lines.append(f"▫️ {desc}: R${amount:.2f} ({data_fmt})")
+            
+            # Agrupa categorias
+            cat = trans.get('category') or desc # Usa descrição se não tiver categoria
+            category_totals[cat] = category_totals.get(cat, 0) + amount
             grand_total += amount
         except Exception as e:
-            print(f"Erro ao processar transação no relatório: {trans} | Erro: {e}")
             continue
-    if not category_totals: return "Nenhum gasto válido encontrado no período."
-    summary_lines = ["\n-----------------------------------------\n\n*Resumo por Categoria:*"]
+
+    summary_lines = ["\n*📂 Por Categoria:*"]
     for category, total in sorted(category_totals.items(), key=lambda item: item[1], reverse=True):
-        summary_lines.append(f"- Você gastou R${total:.2f} com {category}")
-    final_report = "\n".join(report_lines) + "\n".join(summary_lines)
-    final_report += f"\n\n*Gasto Total no Período:* R${grand_total:.2f}"
+        summary_lines.append(f"▪️ {category}: R${total:.2f}")
+    
+    final_report = "\n".join(report_lines) + "\n------------------\n" + "\n".join(summary_lines)
+    final_report += f"\n\n💰 *Total:* R${grand_total:.2f}"
     return final_report
 
 def handle_command(command, user_id):
     parts = command.split(' ')
     cmd = parts[0].lstrip('/')
 
-    if cmd in ['menu', 'ajuda']:
+    # --- TEXTO DE AJUDA NOVO ---
+    if cmd in ['ajuda', 'start']:
         return """
-🤖 *Menu de Comandos* 🤖
+🤖 *Bem-vindo ao WhatsFinance!*
 
-*Gestão de Lançamentos:*
-`/ultimos` - Lista seus últimos 5 lançamentos.
-`/apagar [ID]` - Apaga um lançamento pelo ID.
+Eu sou seu assistente financeiro pessoal.
+Você não precisa decorar comandos. Basta navegar pelos botões abaixo ou conversar comigo.
 
-*Contas e Cartões:*
-`/cadastrar_conta [nome]`
-`/cadastrar_cartao [nome]`
-`/saldo`
-`/fatura [nome]` (Em breve)
+*Como usar:*
+1. *Registrar gastos:* Apenas escreva.
+   Ex: _"Gastei 50 no mercado no débito"_
+   Ex: _"Pix de 100 reais recebido do João"_
 
-*Relatórios Detalhados:*
-`/relatorio_esta_semana`
-`/relatorio_semana_passada`
+2. *Navegar:* Use o botão */menu* para ver seus relatórios, saldos e cadastrar contas.
+
+Vamos começar? 👇
 """
-    # --- NOVO COMANDO "SECRETO" PARA TESTE ---
+    
+    # --- Lógica de Comandos ---
     elif cmd == 'conselho':
         return ai_parser.get_financial_advice()
 
+    # Cadastros (Mantemos a lógica textual caso o usuário queira digitar, 
+    # mas vamos acionar via botão que pede input depois)
     elif cmd == 'cadastrar_conta':
-        if len(parts) < 2: return "Uso: `/cadastrar_conta [nome]`"
+        if len(parts) < 2: return "⚠️ Para cadastrar, digite: `/cadastrar_conta NomeDoBanco`"
         account_name = " ".join(parts[1:])
         db.create_account(user_id, account_name)
-        return f"✅ Conta '{account_name}' criada!"
+        return f"✅ Conta *{account_name}* criada com sucesso!"
+
     elif cmd == 'cadastrar_cartao':
-        if len(parts) < 2: return "Uso: `/cadastrar_cartao [nome]`"
+        if len(parts) < 2: return "⚠️ Para cadastrar, digite: `/cadastrar_cartao NomeDoCartao`"
         card_name = " ".join(parts[1:])
         db.create_credit_card(user_id, card_name)
-        return f"✅ Cartão '{card_name}' criado!"
+        return f"✅ Cartão *{card_name}* criado com sucesso!"
 
     elif cmd == 'saldo':
         accounts = db.get_accounts_balance(user_id)
-        if not accounts: return "Você ainda não tem contas cadastradas."
-        response_text = "* Saldos Atuais *\n\n"
+        if not accounts: return "Você ainda não tem contas cadastradas. Vá em Configurações para adicionar."
+        response_text = "💰 *Seus Saldos:*\n\n"
         total = sum(acc.get('balance', 0) for acc in accounts)
         for acc in accounts:
-            response_text += f"*{acc.get('name', 'N/A')}:* R${acc.get('balance', 0):.2f}\n"
-        response_text += f"\n*Total:* R${total:.2f}"
+            response_text += f"🏦 *{acc.get('name')}:* R${acc.get('balance', 0):.2f}\n"
+        response_text += f"\n*Patrimônio Total:* R${total:.2f}"
         return response_text
-    elif cmd == 'fatura':
-        return "Função /fatura ainda em construção!"
 
     elif cmd == 'ultimos':
         last_trans = db.get_last_transactions(user_id)
-        if not last_trans:
-            return "Nenhum lançamento recente encontrado."
-        response_text = "*Seus Últimos Lançamentos:*\n\n"
-        for t in last_trans:
-            tipo = "⬆️" if t.get('type') == 'income' else "⬇️"
-            desc = (t.get('description') or "Sem descrição").capitalize()
-            response_text += f"{tipo} *ID {t.get('id')}:* {desc} - R${t.get('amount', 0):.2f}\n"
-        response_text += "\nPara apagar, use `/apagar [ID]`"
-        return response_text
-    elif cmd == 'apagar':
-        if len(parts) < 2 or not parts[1].isdigit():
-            return "Uso incorreto. Ex: `/apagar 123`"
-        trans_id_to_delete = int(parts[1])
-        success = db.delete_transaction(trans_id_to_delete, user_id)
-        if success:
-            return f"✅ Lançamento com ID {trans_id_to_delete} apagado com sucesso!"
-        else:
-            return "❌ Erro ao apagar o lançamento. Verifique se o ID está correto."
-
-    elif cmd == 'relatorio_esta_semana':
-        transactions = db.get_detailed_report(user_id, 'this_week')
-        return "*--- Relatório desta Semana ---*\n\n" + format_detailed_report(transactions)
-    elif cmd in ['gerar_relatorio_semanal_detalhado', 'relatorio_semana_passada']:
-        transactions = db.get_detailed_report(user_id, 'last_week')
-        return "*--- Relatório da Semana Passada ---*\n\n" + format_detailed_report(transactions)
-    elif cmd in ['gerar_relatorio_mensal_detalhado', 'relatorio_mes_passado']:
-        transactions = db.get_detailed_report(user_id, 'last_month')
-        return "*--- Relatório do Mês Passado ---*\n\n" + format_detailed_report(transactions)
+        if not last_trans: return "📭 Nenhum lançamento recente."
         
-    else:
-        return "Comando não reconhecido. Digite /menu."
+        response_text = "*📝 Últimos 5 Lançamentos:*\n\n"
+        for t in last_trans:
+            tipo = "🟢" if t.get('type') == 'income' else "🔴"
+            desc = t.get('description') or "S/D"
+            val = t.get('amount', 0)
+            tid = t.get('id')
+            response_text += f"{tipo} *R${val:.2f}* - {desc} (ID: {tid})\n"
+        
+        response_text += "\n_Para apagar, digite /apagar ID_"
+        return response_text
+
+    elif cmd == 'apagar':
+        if len(parts) < 2: return "Para apagar, preciso do ID. Ex: `/apagar 55`"
+        if not parts[1].isdigit(): return "O ID precisa ser um número."
+        
+        tid = int(parts[1])
+        if db.delete_transaction(tid, user_id):
+            return f"🗑️ Lançamento {tid} apagado!"
+        else:
+            return "❌ Erro: ID não encontrado ou falha no sistema."
+
+    # Relatórios (Centralizados)
+    elif cmd == 'relatorio_esta_semana':
+        return format_detailed_report(db.get_detailed_report(user_id, 'this_week'))
+    elif cmd == 'relatorio_semana_passada':
+        return format_detailed_report(db.get_detailed_report(user_id, 'last_week'))
+    elif cmd == 'relatorio_mes_atual': # Adicionado
+        return format_detailed_report(db.get_detailed_report(user_id, 'this_month'))
+        
+    return "Comando não entendido."
