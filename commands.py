@@ -43,6 +43,7 @@ def handle_command(command, user_id):
     parts = command.split(' ')
     cmd = parts[0].lstrip('/')
 
+    
     # --- TEXTO DE AJUDA NOVO ---
     if cmd in ['ajuda', 'start']:
         return """
@@ -78,6 +79,33 @@ Vamos começar? 👇
         card_name = " ".join(parts[1:])
         db.create_credit_card(user_id, card_name)
         return f"✅ Cartão *{card_name}* criado com sucesso!"
+
+    # --- NOVO CADASTRO DE CARTÃO ---
+    elif cmd == 'cadastrar_cartao':
+        # Formato: /cadastrar_cartao Nome DiaFecha DiaVence
+        if len(parts) < 4: 
+            return "⚠️ Use: `/cadastrar_cartao Nome DiaFechamento DiaVencimento`\nEx: `/cadastrar_cartao Nubank 04 11`"
+        
+        card_name = parts[1]
+        try:
+            closing = int(parts[2])
+            due = int(parts[3])
+            db.create_credit_card(user_id, card_name, closing, due)
+            return f"✅ Cartão *{card_name}* cadastrado!\n📅 Fecha dia {closing}\n📅 Vence dia {due}"
+        except:
+            return "⚠️ Os dias precisam ser números."
+
+    # --- NOVA FUNÇÃO FATURA ---
+    elif cmd == 'fatura':
+        total, details = db.get_invoice_total(user_id)
+        if total == 0: return "💳 Nenhuma fatura em aberto encontrada."
+        
+        msg = f"💳 *Faturas Abertas (Estimativa):*\n"
+        for d in details:
+            msg += f"▫️ *{d['card']}*: R${d['total']:.2f} (Vence dia {d['due_day']})\n"
+        
+        msg += f"\n💰 *Total:* R${total:.2f}"
+        return msg
 
     elif cmd == 'saldo':
         accounts = db.get_accounts_balance(user_id)
