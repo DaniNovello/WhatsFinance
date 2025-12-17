@@ -1,7 +1,7 @@
+# Arquivo: app.py
 import os
+import requests
 from flask import Flask, request
-from twilio.twiml.messaging_response import MessagingResponse
-from twilio.rest import Client # <-- Client para enviar mensagens agendadas
 from dotenv import load_dotenv
 
 import db
@@ -11,132 +11,134 @@ import ai_parser
 load_dotenv()
 app = Flask(__name__)
 
-# --- CONFIGURAÇÃO DE SEGURANÇA PARA O AGENDADOR ---
-# Esta "senha" será usada para proteger suas rotas de relatório.
+# --- CONFIGURAÇÕES ---
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 CRON_SECRET = os.environ.get("CRON_SECRET")
+TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+
+def send_telegram_message(chat_id, text):
+    """Envia mensagem para o Telegram usando a API oficial."""
+    payload = {
+        'chat_id': chat_id,
+        'text': text,
+        'parse_mode': 'Markdown' # Permite usar negrito com *texto*
+    }
+    try:
+        requests.post(TELEGRAM_API_URL, json=payload)
+    except Exception as e:
+        print(f"Erro ao enviar mensagem Telegram: {e}")
 
 @app.route('/health', methods=['GET'])
 def health_check():
     return "OK", 200
 
+# Estado em memória simples para fluxo de cadastro (pode reiniciar com o servidor)
 user_state = {}
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    incoming_msg = request.values.get('Body', '').strip()
-    sender_phone = request.values.get('From', '').replace('whatsapp:', '')
+    data = request.get_json()
     
-    response = MessagingResponse()
-    message = response.message()
+    # Verifica se é uma mensagem válida de texto
+    if not data or 'message' not in data:
+        return "Ignored", 200
+
+    message = data['message']
+    chat_id = message.get('chat', {}).get('id')
+    incoming_msg = message.get('text', '').strip()
+    sender_name = message.get('from', {}).get('first_name', 'Usuário')
+
+    if not chat_id or not incoming_msg:
+        return "Ignored", 200
 
     try:
-        user = db.get_user_by_phone(sender_phone)
+        # Busca usuário pelo ID do Telegram
+        user = db.get_user(chat_id)
+
         if not user:
-            # Lógica de cadastro (sem alteração)
-            if user_state.get(sender_phone) == 'awaiting_name':
-                new_user = db.create_user(sender_phone, incoming_msg)
-                message.body(f"Ótimo, {new_user['name']}! Cadastro concluído. Digite /menu.")
-                del user_state[sender_phone]
+            # --- Fluxo de Cadastro ---
+            if user_state.get(chat_id) == 'awaiting_name':
+                # O usuário enviou o nome
+                db.create_user(chat_id, incoming_msg)
+                send_telegram_message(chat_id, f"Ótimo, {incoming_msg}! Cadastro concluído. Digite /menu para ver o que posso fazer.")
+                del user_state[chat_id]
             else:
-                message.body("Olá! Para começar, me diga seu nome.")
-                user_state[sender_phone] = 'awaiting_name'
+                # Primeiro contato
+                send_telegram_message(chat_id, f"Olá, {sender_name}! Bem-vindo ao WhatsFinance (versão Telegram). Para começar, como você gostaria de ser chamado?")
+                user_state[chat_id] = 'awaiting_name'
         else:
-            # Lógica de processamento de mensagens (sem alteração)
+            # --- Fluxo Normal ---
             if incoming_msg.startswith('/'):
                 response_text = commands.handle_command(incoming_msg, user['id'])
-                message.body(response_text)
+                send_telegram_message(chat_id, response_text)
             else:
+                # Processamento IA
                 ai_data = ai_parser.get_ai_response(incoming_msg)
                 
                 if not ai_data:
-                    message.body("😕 Desculpe, não consegui processar sua solicitação.")
+                    send_telegram_message(chat_id, "😕 Desculpe, não consegui entender. Tente reformular ou use /menu.")
                 
                 elif ai_data.get('intent') == 'register_transaction':
                     entities = ai_data.get('entities', {})
+                    # Passa o user['id'] que é o ID do Telegram
                     success = db.process_transaction_with_rpc(user['id'], entities)
+                    
                     if success:
                         desc = entities.get('description', 'N/A')
                         amount = float(entities.get('amount', 0))
                         tipo = "Entrada" if entities.get('type') == 'income' else "Gasto"
-                        message.body(f"✅ {tipo} de R${amount:.2f} em '{desc}' registrado!")
+                        send_telegram_message(chat_id, f"✅ *{tipo}* registrado!\n📝 {desc}\n💰 R${amount:.2f}")
                     else:
-                        message.body("❌ Erro ao registrar. Você já cadastrou uma conta com `/cadastrar_conta`?")
+                        send_telegram_message(chat_id, "❌ Erro ao registrar. Você já criou uma conta com `/cadastrar_conta`?")
 
                 elif ai_data.get('intent') == 'query_report':
                     entities = ai_data.get('entities', {})
                     total = db.get_report(user['id'], entities.get('description'), entities.get('time_period'))
                     period_text = {"last_week": "na última semana", "last_month": "no último mês", "today": "hoje", "yesterday": "ontem", "this_week": "esta semana", "this_month": "este mês"}
+                    
+                    p_text = period_text.get(entities.get('time_period'), '')
                     if entities.get('description'):
-                        message.body(f"Você gastou R${total:.2f} com '{entities.get('description')}' {period_text.get(entities.get('time_period'), '')}.")
+                        send_telegram_message(chat_id, f"📊 Gastos com *{entities.get('description')}* {p_text}: R${total:.2f}")
                     else:
-                        message.body(f"Seu gasto total {period_text.get(entities.get('time_period'), '')} foi de R${total:.2f}.")
+                        send_telegram_message(chat_id, f"📊 Gasto total {p_text}: R${total:.2f}")
                 else:
-                    message.body("Não entendi. Para relatórios e outras ações, por favor, use os comandos do /menu.")
+                    send_telegram_message(chat_id, "Não entendi bem. Tente escrever algo como 'gastei 50 no mercado' ou digite /menu.")
 
     except Exception as e:
-        print(f"!!!!!!!! ERRO INESPERADO: {e} !!!!!!!!")
-        message.body("🤖 Ops! Encontrei um erro interno.")
-    return str(response)
+        print(f"!!!!!!!! ERRO NO WEBHOOK: {e} !!!!!!!!")
+        send_telegram_message(chat_id, "🤖 Ops! Tive um erro interno.")
 
-# --- NOVAS ROTAS PARA O AGENDADOR EXTERNO ---
+    return "OK", 200
 
-def send_proactive_message(user_phone_number, message_body):
-    """Função central para enviar mensagens proativas (iniciadas pelo bot)."""
-    try:
-        account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
-        auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
-        twilio_phone = os.environ.get("TWILIO_PHONE_NUMBER")
-        client = Client(account_sid, auth_token)
-
-        client.messages.create(
-            from_=f'whatsapp:{twilio_phone}',
-            body=message_body,
-            to=f'whatsapp:{user_phone_number}'
-        )
-        print(f"Mensagem agendada enviada com sucesso para {user_phone_number}")
-        return True
-    except Exception as e:
-        print(f"!!!!!!!! ERRO AO ENVIAR MENSAGEM PROATIVA: {e} !!!!!!!!")
-        return False
+# --- ROTAS DE CRON JOBS (Mantidas, mas enviando via Telegram) ---
 
 @app.route('/trigger/weekly-report/<secret>', methods=['POST'])
 def trigger_weekly_report(secret):
-    """Quando visitado pelo Cron-Job, envia o relatório semanal para TODOS os usuários."""
-    if secret != CRON_SECRET:
-        return "Acesso negado.", 403
-
+    if secret != CRON_SECRET: return "Acesso negado.", 403
     all_users = db.get_all_users()
-    print(f"Disparando relatório semanal para {len(all_users)} usuários.")
-
     for user in all_users:
+        # user['id'] agora é o chat_id do Telegram
         report_content = commands.handle_command("/relatorio_semana_passada", user['id'])
-        send_proactive_message(user['phone_number'], report_content)
-        
-    return f"Relatório semanal enviado para {len(all_users)} usuários.", 200
+        send_telegram_message(user['id'], report_content)
+    return f"Enviado para {len(all_users)} usuários.", 200
 
 @app.route('/trigger/monthly-report/<secret>', methods=['POST'])
 def trigger_monthly_report(secret):
-    """Quando visitado pelo Cron-Job, envia o relatório mensal para TODOS os usuários."""
-    if secret != CRON_SECRET:
-        return "Acesso negado.", 403
-        
+    if secret != CRON_SECRET: return "Acesso negado.", 403
     all_users = db.get_all_users()
-    print(f"Disparando relatório mensal para {len(all_users)} usuários.")
-
     for user in all_users:
         report_content = commands.handle_command("/relatorio_mes_passado", user['id'])
-        send_proactive_message(user['phone_number'], report_content)
+        send_telegram_message(user['id'], report_content)
+    return f"Enviado para {len(all_users)} usuários.", 200
 
-    return f"Relatório mensal enviado para {len(all_users)} usuários.", 200
-# --- NOVA ROTA PARA CONSELHOS ---
 @app.route('/trigger/financial-advice/<secret>', methods=['POST'])
 def trigger_financial_advice(secret):
     if secret != CRON_SECRET: return "Acesso negado.", 403
     all_users = db.get_all_users()
-    advice = ai_parser.get_financial_advice() # Gera um conselho único para todos
+    advice = ai_parser.get_financial_advice()
     for user in all_users:
-        send_proactive_message(user['phone_number'], advice)
-    return f"Conselho financeiro enviado para {len(all_users)} usuários.", 200
+        send_telegram_message(user['id'], advice)
+    return f"Conselho enviado para {len(all_users)} usuários.", 200
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)

@@ -1,6 +1,5 @@
-# Arquivo: requirements.txt
 flask
-twilio
+requests
 supabase
 python-dotenv
 gunicorn
