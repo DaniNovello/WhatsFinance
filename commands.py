@@ -43,8 +43,7 @@ def handle_command(command, user_id):
     parts = command.split(' ')
     cmd = parts[0].lstrip('/')
 
-    
-    # --- TEXTO DE AJUDA NOVO ---
+    # --- TEXTO DE AJUDA ---
     if cmd in ['ajuda', 'start']:
         return """
 🤖 *Bem-vindo ao WhatsFinance!*
@@ -62,29 +61,20 @@ Você não precisa decorar comandos. Basta navegar pelos botões abaixo ou conve
 Vamos começar? 👇
 """
     
-    # --- Lógica de Comandos ---
     elif cmd == 'conselho':
         return ai_parser.get_financial_advice()
 
-    # Cadastros (Mantemos a lógica textual caso o usuário queira digitar, 
-    # mas vamos acionar via botão que pede input depois)
     elif cmd == 'cadastrar_conta':
         if len(parts) < 2: return "⚠️ Para cadastrar, digite: `/cadastrar_conta NomeDoBanco`"
         account_name = " ".join(parts[1:])
         db.create_account(user_id, account_name)
         return f"✅ Conta *{account_name}* criada com sucesso!"
 
-    elif cmd == 'cadastrar_cartao':
-        if len(parts) < 2: return "⚠️ Para cadastrar, digite: `/cadastrar_cartao NomeDoCartao`"
-        card_name = " ".join(parts[1:])
-        db.create_credit_card(user_id, card_name)
-        return f"✅ Cartão *{card_name}* criado com sucesso!"
-
-    # --- NOVO CADASTRO DE CARTÃO ---
+    # --- CORREÇÃO: APENAS UMA VERSÃO DO CADASTRAR CARTÃO (A NOVA) ---
     elif cmd == 'cadastrar_cartao':
         # Formato: /cadastrar_cartao Nome DiaFecha DiaVence
         if len(parts) < 4: 
-            return "⚠️ Use: `/cadastrar_cartao Nome DiaFechamento DiaVencimento`\nEx: `/cadastrar_cartao Nubank 04 11`"
+            return "⚠️ Use: `/cadastrar_cartao Nome DiaFechamento DiaVencimento`\n\nEx: `/cadastrar_cartao Nubank 04 11`"
         
         card_name = parts[1]
         try:
@@ -93,9 +83,8 @@ Vamos começar? 👇
             db.create_credit_card(user_id, card_name, closing, due)
             return f"✅ Cartão *{card_name}* cadastrado!\n📅 Fecha dia {closing}\n📅 Vence dia {due}"
         except:
-            return "⚠️ Os dias precisam ser números."
+            return "⚠️ Os dias precisam ser números inteiros (ex: 05, 10)."
 
-    # --- NOVA FUNÇÃO FATURA ---
     elif cmd == 'fatura':
         total, details = db.get_invoice_total(user_id)
         if total == 0: return "💳 Nenhuma fatura em aberto encontrada."
@@ -142,12 +131,12 @@ Vamos começar? 👇
         else:
             return "❌ Erro: ID não encontrado ou falha no sistema."
 
-    # Relatórios (Centralizados)
+    # Relatórios
     elif cmd == 'relatorio_esta_semana':
         return format_detailed_report(db.get_detailed_report(user_id, 'this_week'))
     elif cmd == 'relatorio_semana_passada':
         return format_detailed_report(db.get_detailed_report(user_id, 'last_week'))
-    elif cmd == 'relatorio_mes_atual': # Adicionado
+    elif cmd == 'relatorio_mes_atual': 
         return format_detailed_report(db.get_detailed_report(user_id, 'this_month'))
         
     return "Comando não entendido."
