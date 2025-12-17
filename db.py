@@ -7,14 +7,22 @@ url: str = os.environ.get("SUPABASE_URL")
 key: str = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(url, key)
 
-# --- Funções de Usuário ---
-def get_user_by_phone(phone_number):
-    response = supabase.table('users').select('id, name, phone_number').eq('phone_number', phone_number).limit(1).execute()
+# --- Funções de Usuário (Adaptadas para Telegram) ---
+def get_user(telegram_id):
+    """Busca usuário pelo ID do Telegram (chat_id)."""
+    # Nota: No novo schema SQL, o 'id' da tabela users deve ser o ID do Telegram.
+    response = supabase.table('users').select('*').eq('id', telegram_id).limit(1).execute()
     return response.data[0] if response.data else None
 
-def create_user(phone_number, name):
-    response = supabase.table('users').insert({"phone_number": phone_number, "name": name}).execute()
+def create_user(telegram_id, name):
+    """Cria usuário usando o ID do Telegram."""
+    response = supabase.table('users').insert({"id": telegram_id, "name": name}).execute()
     return response.data[0] if response.data else None
+
+def get_all_users():
+    """Busca todos os usuários (agora retorna IDs do Telegram)."""
+    response = supabase.table('users').select('id, name').execute()
+    return response.data if response.data else []
 
 # --- Funções de Conta e Cartão ---
 def create_account(user_id, account_name):
@@ -39,8 +47,9 @@ def process_transaction_with_rpc(user_id, data):
             'p_type': data.get('type'),
             'p_payment_method': data.get('payment_method')
         }
+        # Garanta que sua função RPC no Supabase receba p_user_id como BIGINT
         response = supabase.rpc('handle_transaction_and_update_balance', params).execute()
-        return response.data
+        return response.data if response.data is not None else True # RPC void retorna None ou True se sucesso
     except Exception as e:
         print(f"Erro no RPC: {e}")
         return False
@@ -95,9 +104,3 @@ def delete_transaction(transaction_id, user_id):
     except Exception as e:
         print(f"Erro ao apagar transação: {e}")
         return False
-
-# --- NOVA FUNÇÃO PARA AGENDAMENTO ESCALÁVEL ---
-def get_all_users():
-    """Busca todos os usuários cadastrados no sistema."""
-    response = supabase.table('users').select('id, phone_number').execute()
-    return response.data if response.data else []
