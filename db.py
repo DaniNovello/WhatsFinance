@@ -45,13 +45,14 @@ def process_transaction_with_rpc(user_id, data):
             'p_description': data.get('description'),
             'p_amount': data.get('amount'),
             'p_type': data.get('type'),
-            'p_payment_method': data.get('payment_method')
+            'p_payment_method': data.get('payment_method'),
+            'p_category': data.get('category') # Nova linha
         }
-        # Garanta que sua função RPC no Supabase receba p_user_id como BIGINT
-        response = supabase.rpc('handle_transaction_and_update_balance', params).execute()
-        return response.data if response.data is not None else True # RPC void retorna None ou True se sucesso
+        # Chama a RPC atualizada
+        supabase.rpc('handle_transaction_and_update_balance', params).execute()
+        return True
     except Exception as e:
-        print(f"Erro no RPC: {e}")
+        print(f"Erro no RPC: {e}") # Pode trocar por logging se quiser
         return False
 
 # --- Funções de Relatório ---
