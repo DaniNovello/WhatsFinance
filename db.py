@@ -33,9 +33,70 @@ def get_accounts_balance(user_id):
     response = supabase.table('accounts').select('name, balance').eq('user_id', user_id).execute()
     return response.data if response.data else []
 
-def create_credit_card(user_id, card_name):
-    response = supabase.table('credit_cards').insert({"user_id": user_id, "name": card_name}).execute()
+def create_credit_card(user_id, card_name, closing_day=1, due_day=10):
+    """Cria cartão com dia de fechamento e vencimento."""
+    data = {
+        "user_id": user_id, 
+        "name": card_name, 
+        "closing_day": closing_day, 
+        "due_day": due_day
+    }
+    response = supabase.table('credit_cards').insert(data).execute()
     return response.data[0] if response.data else None
+
+def get_user_cards(user_id):
+    """Retorna lista de cartões do usuário."""
+    response = supabase.table('credit_cards').select('*').eq('user_id', user_id).execute()
+    return response.data if response.data else []
+
+def get_invoice_total(user_id, card_id=None):
+    """Calcula a fatura ABERTA baseada no dia de hoje e dia de fechamento."""
+    # 1. Busca os cartões do usuário
+    query = supabase.table('credit_cards').select('*').eq('user_id', user_id)
+    if card_id: query = query.eq('id', card_id)
+    cards = query.execute().data
+    
+    if not cards: return 0.0, []
+
+    total_invoice = 0.0
+    details = []
+    
+    today = date.today()
+    
+    for card in cards:
+        c_day = card.get('closing_day', 1)
+        
+        # Lógica de Fechamento:
+        # Se hoje é dia 15 e fecha dia 10 -> Estamos na fatura que fecha mês que vem (dia 10)
+        # Se hoje é dia 05 e fecha dia 10 -> Estamos na fatura que fecha neste mês (dia 10)
+        
+        if today.day >= c_day:
+            # Fatura começou neste mês no dia do fechamento e vai até mês que vem
+            start_date = date(today.year, today.month, c_day)
+            # Truque para pegar mês seguinte sem erro
+            next_month = today.replace(day=28) + timedelta(days=4)
+            end_date = date(next_month.year, next_month.month, c_day) - timedelta(days=1)
+        else:
+            # Fatura começou mês passado
+            first = today.replace(day=1)
+            last_month = first - timedelta(days=1)
+            start_date = date(last_month.year, last_month.month, c_day)
+            end_date = date(today.year, today.month, c_day) - timedelta(days=1)
+
+        # Busca transações desse cartão nesse período
+        trans = supabase.table('transactions')\
+            .select('amount, description, transaction_date')\
+            .eq('user_id', user_id)\
+            .eq('card_id', card['id'])\
+            .gte('transaction_date', start_date.isoformat())\
+            .lte('transaction_date', end_date.isoformat())\
+            .execute().data
+            
+        card_total = sum(float(t['amount']) for t in trans)
+        total_invoice += card_total
+        details.append({'card': card['name'], 'total': card_total, 'due_day': card['due_day']})
+
+    return total_invoice, details
 
 # --- Funções de Transação ---
 def process_transaction_with_rpc(user_id, data):
@@ -46,15 +107,15 @@ def process_transaction_with_rpc(user_id, data):
             'p_amount': data.get('amount'),
             'p_type': data.get('type'),
             'p_payment_method': data.get('payment_method'),
-            'p_category': data.get('category') # Nova linha
+            'p_category': data.get('category'),
+            'p_card_id': data.get('card_id') # Passa o ID do cartão
         }
-        # Chama a RPC atualizada
         supabase.rpc('handle_transaction_and_update_balance', params).execute()
         return True
     except Exception as e:
-        print(f"Erro no RPC: {e}") # Pode trocar por logging se quiser
+        print(f"Erro no RPC: {e}")
         return False
-
+    
 # --- Funções de Relatório ---
 def get_date_range(time_period):
     today = date.today()
