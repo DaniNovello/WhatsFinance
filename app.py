@@ -56,7 +56,7 @@ def webhook():
         raw_data = cb['data']
         answer_callback(cb['id'])
 
-        logger.info(f"🔘 BOTÃO CLICADO: {raw_data} por User {chat_id}") # LOG NOVO
+        logger.info(f"🔘 BOTÃO CLICADO: {raw_data} por User {chat_id}")
 
         # Lógica de Seleção de Cartão
         if raw_data.startswith('sel_card_'):
@@ -103,14 +103,15 @@ def webhook():
             logger.info("--> Renderizando Menu Configurações")
             send_message(chat_id, "⚙️ *Configurações*", reply_markup=get_config_keyboard())
 
-        # --- BOTÕES DE INSTRUÇÃO (AQUI ESTAVA A DÚVIDA) ---
+        # --- BOTÕES DE INSTRUÇÃO ---
         elif raw_data == 'instrucao_conta': 
             logger.info("--> Clicou Nova Conta. Enviando instrução.")
             send_message(chat_id, "Para criar uma conta, digite:\n`/cadastrar_conta Nubank`")
         
         elif raw_data == 'instrucao_cartao': 
             logger.info("--> Clicou Novo Cartão. Enviando instrução.")
-            send_message(chat_id, "Para cadastrar cartão use:\n`/cadastrar_cartao Nome DiaFecha DiaVence`\n\nEx: _/cadastrar_cartao Nubank 04 11_")
+            # CORRIGIDO: Removido itálico (_) e usado código (`) para evitar erro de parse
+            send_message(chat_id, "Para cadastrar cartão use:\n`/cadastrar_cartao Nome DiaFecha DiaVence`\n\nEx: `/cadastrar_cartao Nubank 04 11`")
 
         elif raw_data == '/apagar_ultimo':
             logger.info("--> Apagando último")
