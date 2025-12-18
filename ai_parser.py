@@ -1,3 +1,4 @@
+# Arquivo: ai_parser.py
 import os
 import google.generativeai as genai
 import json
@@ -15,9 +16,9 @@ generation_config = {
     "response_mime_type": "application/json"
 }
 
-# CORREÇÃO: Removido "-latest" que estava causando erro 404
+# CORREÇÃO: Uso de versão específica (001) para resolver o erro 404
 model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash", 
+    model_name="gemini-1.5-flash-001", 
     generation_config=generation_config
 )
 
