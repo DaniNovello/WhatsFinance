@@ -1,26 +1,22 @@
-# Arquivo: db.py
 import os
 from datetime import datetime, timedelta, date, time
+from dateutil.relativedelta import relativedelta
 from supabase import create_client, Client
 
 url: str = os.environ.get("SUPABASE_URL")
 key: str = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(url, key)
 
-# --- Funções de Usuário (Adaptadas para Telegram) ---
+# --- Funções de Usuário ---
 def get_user(telegram_id):
-    """Busca usuário pelo ID do Telegram (chat_id)."""
-    # Nota: No novo schema SQL, o 'id' da tabela users deve ser o ID do Telegram.
     response = supabase.table('users').select('*').eq('id', telegram_id).limit(1).execute()
     return response.data[0] if response.data else None
 
 def create_user(telegram_id, name):
-    """Cria usuário usando o ID do Telegram."""
     response = supabase.table('users').insert({"id": telegram_id, "name": name}).execute()
     return response.data[0] if response.data else None
 
 def get_all_users():
-    """Busca todos os usuários (agora retorna IDs do Telegram)."""
     response = supabase.table('users').select('id, name').execute()
     return response.data if response.data else []
 
@@ -34,24 +30,15 @@ def get_accounts_balance(user_id):
     return response.data if response.data else []
 
 def create_credit_card(user_id, card_name, closing_day=1, due_day=10):
-    """Cria cartão com dia de fechamento e vencimento."""
-    data = {
-        "user_id": user_id, 
-        "name": card_name, 
-        "closing_day": closing_day, 
-        "due_day": due_day
-    }
+    data = {"user_id": user_id, "name": card_name, "closing_day": closing_day, "due_day": due_day}
     response = supabase.table('credit_cards').insert(data).execute()
     return response.data[0] if response.data else None
 
 def get_user_cards(user_id):
-    """Retorna lista de cartões do usuário."""
     response = supabase.table('credit_cards').select('*').eq('user_id', user_id).execute()
     return response.data if response.data else []
 
 def get_invoice_total(user_id, card_id=None):
-    """Calcula a fatura ABERTA baseada no dia de hoje e dia de fechamento."""
-    # 1. Busca os cartões do usuário
     query = supabase.table('credit_cards').select('*').eq('user_id', user_id)
     if card_id: query = query.eq('id', card_id)
     cards = query.execute().data
@@ -60,37 +47,23 @@ def get_invoice_total(user_id, card_id=None):
 
     total_invoice = 0.0
     details = []
-    
     today = date.today()
     
     for card in cards:
         c_day = card.get('closing_day', 1)
-        
-        # Lógica de Fechamento:
-        # Se hoje é dia 15 e fecha dia 10 -> Estamos na fatura que fecha mês que vem (dia 10)
-        # Se hoje é dia 05 e fecha dia 10 -> Estamos na fatura que fecha neste mês (dia 10)
-        
         if today.day >= c_day:
-            # Fatura começou neste mês no dia do fechamento e vai até mês que vem
             start_date = date(today.year, today.month, c_day)
-            # Truque para pegar mês seguinte sem erro
             next_month = today.replace(day=28) + timedelta(days=4)
             end_date = date(next_month.year, next_month.month, c_day) - timedelta(days=1)
         else:
-            # Fatura começou mês passado
             first = today.replace(day=1)
             last_month = first - timedelta(days=1)
             start_date = date(last_month.year, last_month.month, c_day)
             end_date = date(today.year, today.month, c_day) - timedelta(days=1)
 
-        # Busca transações desse cartão nesse período
-        trans = supabase.table('transactions')\
-            .select('amount, description, transaction_date')\
-            .eq('user_id', user_id)\
-            .eq('card_id', card['id'])\
+        trans = supabase.table('transactions').select('amount').eq('user_id', user_id).eq('card_id', card['id'])\
             .gte('transaction_date', start_date.isoformat())\
-            .lte('transaction_date', end_date.isoformat())\
-            .execute().data
+            .lte('transaction_date', end_date.isoformat()).execute().data
             
         card_total = sum(float(t['amount']) for t in trans)
         total_invoice += card_total
@@ -99,6 +72,7 @@ def get_invoice_total(user_id, card_id=None):
     return total_invoice, details
 
 # --- Funções de Transação ---
+
 def process_transaction_with_rpc(user_id, data):
     try:
         params = {
@@ -108,15 +82,57 @@ def process_transaction_with_rpc(user_id, data):
             'p_type': data.get('type'),
             'p_payment_method': data.get('payment_method'),
             'p_category': data.get('category'),
-            'p_card_id': data.get('card_id') # Passa o ID do cartão
+            'p_card_id': data.get('card_id')
         }
         supabase.rpc('handle_transaction_and_update_balance', params).execute()
         return True
     except Exception as e:
         print(f"Erro no RPC: {e}")
         return False
-    
-# --- Funções de Relatório ---
+
+def create_installments(user_id, data, installments):
+    """Cria N transações futuras para compras parceladas."""
+    try:
+        total_amount = float(data.get('amount', 0))
+        installment_value = total_amount / installments
+        base_desc = data.get('description', 'Compra')
+        base_date = datetime.now()
+        
+        for i in range(installments):
+            # Soma meses à data atual
+            future_date = base_date + relativedelta(months=i)
+            
+            payload = {
+                "user_id": user_id,
+                "description": f"{base_desc} ({i+1}/{installments})",
+                "amount": installment_value,
+                "type": data.get('type'),
+                "payment_method": data.get('payment_method'),
+                "category": data.get('category'),
+                "card_id": data.get('card_id'),
+                "transaction_date": future_date.isoformat()
+            }
+            supabase.table('transactions').insert(payload).execute()
+        return True
+    except Exception as e:
+        print(f"Erro parcelas: {e}")
+        return False
+
+def update_transaction_method(transaction_id, method):
+    """Atualiza se foi Crédito, Débito ou Pix."""
+    try:
+        supabase.table('transactions').update({'payment_method': method}).eq('id', transaction_id).execute()
+        return True
+    except: return False
+
+def update_transaction_card(transaction_id, card_id):
+    """Associa a transação a um cartão específico."""
+    try:
+        supabase.table('transactions').update({'card_id': card_id}).eq('id', transaction_id).execute()
+        return True
+    except: return False
+
+# --- Relatórios e Utilitários ---
 def get_date_range(time_period):
     today = date.today()
     if time_period == 'today': return datetime.combine(today, time.min), datetime.combine(today, time.max)
@@ -133,11 +149,6 @@ def get_date_range(time_period):
     if time_period == 'this_month':
         start_of_month = today.replace(day=1)
         return datetime.combine(start_of_month, time.min), datetime.combine(today, time.max)
-    if time_period == 'last_month':
-        first_day_of_current_month = today.replace(day=1)
-        last_day_of_last_month = first_day_of_current_month - timedelta(days=1)
-        first_day_of_last_month = last_day_of_last_month.replace(day=1)
-        return datetime.combine(first_day_of_last_month, time.min), datetime.combine(last_day_of_last_month, time.max)
     return None, None
 
 def get_report(user_id, description, time_period):
@@ -152,7 +163,7 @@ def get_report(user_id, description, time_period):
 def get_detailed_report(user_id, time_period):
     start_date, end_date = get_date_range(time_period)
     if not start_date: return []
-    response = supabase.table('transactions').select('description, amount, transaction_date').eq('user_id', user_id).eq('type', 'expense').gte('transaction_date', start_date.isoformat()).lte('transaction_date', end_date.isoformat()).order('transaction_date').execute()
+    response = supabase.table('transactions').select('description, amount, transaction_date, category').eq('user_id', user_id).eq('type', 'expense').gte('transaction_date', start_date.isoformat()).lte('transaction_date', end_date.isoformat()).order('transaction_date').execute()
     return response.data if response.data else []
 
 def get_last_transactions(user_id, limit=5):
@@ -163,6 +174,4 @@ def delete_transaction(transaction_id, user_id):
     try:
         supabase.rpc('delete_transaction_and_revert_balance', {'p_transaction_id': transaction_id, 'p_user_id': user_id}).execute()
         return True
-    except Exception as e:
-        print(f"Erro ao apagar transação: {e}")
-        return False
+    except: return False

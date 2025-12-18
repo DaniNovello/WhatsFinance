@@ -12,218 +12,177 @@ import ai_parser
 load_dotenv()
 app = Flask(__name__)
 
-# Configuração de Logs
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Variáveis de Ambiente
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
-# --- GERENCIADORES DE TECLADO (INTERFACE) ---
-
+# --- MENUS ---
 def get_main_menu_keyboard():
-    """Menu Principal"""
-    return {
-        'inline_keyboard': [
-            [
-                {'text': '💰 Ver Saldos', 'callback_data': '/saldo'},
-                {'text': '📝 Últimos Lançamentos', 'callback_data': '/ultimos'}
-            ],
-            [
-                {'text': '📊 Relatórios', 'callback_data': 'menu_relatorios'},
-                {'text': '⚙️ Contas e Cartões', 'callback_data': 'menu_config'}
-            ],
-            [
-                {'text': '❓ Ajuda', 'callback_data': '/ajuda'},
-                {'text': '💡 Conselho', 'callback_data': '/conselho'}
-            ]
-        ]
-    }
+    return {'inline_keyboard': [[{'text': '💰 Ver Saldos', 'callback_data': '/saldo'}, {'text': '📝 Últimos', 'callback_data': '/ultimos'}], [{'text': '📊 Relatórios', 'callback_data': 'menu_relatorios'}, {'text': '⚙️ Contas e Cartões', 'callback_data': 'menu_config'}], [{'text': '❓ Ajuda', 'callback_data': '/ajuda'}]]}
 
 def get_reports_keyboard():
-    """Sub-menu de Relatórios"""
-    return {
-        'inline_keyboard': [
-            [
-                {'text': '📅 Esta Semana', 'callback_data': '/relatorio_esta_semana'},
-                {'text': '⏮️ Semana Passada', 'callback_data': '/relatorio_semana_passada'}
-            ],
-            [
-                {'text': '📆 Este Mês', 'callback_data': '/relatorio_mes_atual'},
-                {'text': '🔙 Voltar', 'callback_data': '/menu'}
-            ]
-        ]
-    }
+    return {'inline_keyboard': [[{'text': '📅 Esta Semana', 'callback_data': '/relatorio_esta_semana'}, {'text': '📆 Este Mês', 'callback_data': '/relatorio_mes_atual'}], [{'text': '🔙 Voltar', 'callback_data': '/menu'}]]}
 
 def get_config_keyboard():
-    """Sub-menu de Configurações"""
-    return {
-        'inline_keyboard': [
-            [
-                {'text': '➕ Nova Conta', 'callback_data': 'instrucao_conta'},
-                {'text': '💳 Novo Cartão', 'callback_data': 'instrucao_cartao'}
-            ],
-            [
-                {'text': '🔙 Voltar', 'callback_data': '/menu'}
-            ]
-        ]
-    }
+    return {'inline_keyboard': [[{'text': '➕ Nova Conta', 'callback_data': 'instrucao_conta'}, {'text': '💳 Novo Cartão', 'callback_data': 'instrucao_cartao'}], [{'text': '🔙 Voltar', 'callback_data': '/menu'}]]}
 
-# --- FUNÇÕES AUXILIARES ---
-
+# --- AUXILIARES ---
 def send_message(chat_id, text, reply_markup=None):
     payload = {'chat_id': chat_id, 'text': text, 'parse_mode': 'Markdown'}
     if reply_markup: payload['reply_markup'] = reply_markup
-    try:
-        requests.post(f"{TELEGRAM_API_URL}/sendMessage", json=payload)
-    except Exception as e:
-        logger.error(f"Erro no envio: {e}")
+    try: requests.post(f"{TELEGRAM_API_URL}/sendMessage", json=payload)
+    except Exception as e: logger.error(f"Erro envio: {e}")
 
 def answer_callback(callback_id):
-    try:
-        requests.post(f"{TELEGRAM_API_URL}/answerCallbackQuery", json={'callback_query_id': callback_id})
-    except:
-        pass
+    try: requests.post(f"{TELEGRAM_API_URL}/answerCallbackQuery", json={'callback_query_id': callback_id})
+    except: pass
 
-# --- ROTA WEBHOOK ---
-
+# --- WEBHOOK ---
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.get_json()
     if not data: return "OK", 200
 
-    # 1. TRATAMENTO DE CLIQUES EM BOTÕES (CALLBACK QUERY)
+    # 1. TRATA BOTÕES (CALLBACKS)
     if 'callback_query' in data:
         cb = data['callback_query']
         chat_id = cb['message']['chat']['id']
-        callback_id = cb['id']
-        raw_data = cb['data'] # O comando do botão
-        
-        answer_callback(callback_id)
+        raw_data = cb['data']
+        answer_callback(cb['id'])
 
-        # Lógica de Seleção de Cartão (Callback)
+        # Lógica de Seleção de Cartão
         if raw_data.startswith('sel_card_'):
-            parts = raw_data.split('_')
-            card_id = int(parts[2])
-            
-            # Pega a última transação do usuário e seta o card_id
-            # Nota: Você precisa garantir que db.update_transaction_card exista ou fazer update manual
-            # Exemplo simplificado (assumindo que você implemente a função no db.py):
-            last = db.get_last_transactions(chat_id, limit=1)
+            card_id = int(raw_data.split('_')[2])
+            last = db.get_last_transactions(chat_id, 1)
             if last:
-                # db.update_transaction_card(last[0]['id'], card_id) # Descomente quando criar a função no DB
-                send_message(chat_id, f"✅ Associado ao cartão com sucesso!")
-            else:
-                send_message(chat_id, "Não encontrei a transação para associar.")
+                db.update_transaction_card(last[0]['id'], card_id)
+                send_message(chat_id, "✅ Cartão vinculado com sucesso!")
             return "OK", 200
 
-        # --- Navegação de Menus ---
-        if raw_data == '/menu':
-            send_message(chat_id, "🤖 *Menu Principal*", reply_markup=get_main_menu_keyboard())
+        # Lógica de Dúvida (Crédito ou Débito?)
+        if raw_data.startswith('set_method_'):
+            method = raw_data.replace('set_method_', '')
+            method_db = 'credit_card' if method == 'credit' else 'debit_card' if method == 'debit' else 'pix'
             
-        elif raw_data == 'menu_relatorios':
-            send_message(chat_id, "📊 *Selecione o período do relatório:*", reply_markup=get_reports_keyboard())
-            
-        elif raw_data == 'menu_config':
-            send_message(chat_id, "⚙️ *Gestão de Contas e Cartões*", reply_markup=get_config_keyboard())
-            
-        elif raw_data == 'instrucao_conta':
-            send_message(chat_id, "Para criar uma conta, digite:\n`/cadastrar_conta NomeDoBanco`\n\nEx: _/cadastrar_conta NuBank_")
-            
-        elif raw_data == 'instrucao_cartao':
-            send_message(chat_id, "Para adicionar um cartão, digite:\n`/cadastrar_cartao NomeDoCartao`\n\nEx: _/cadastrar_cartao Visa XP_")
+            last = db.get_last_transactions(chat_id, 1)
+            if last:
+                db.update_transaction_method(last[0]['id'], method_db)
+                # Se for crédito, pergunta qual cartão
+                if method_db == 'credit_card':
+                    cards = db.get_user_cards(chat_id)
+                    kb = {'inline_keyboard': [[{'text': f"💳 {c['name']}", 'callback_data': f"sel_card_{c['id']}"}] for c in cards]} if cards else None
+                    send_message(chat_id, "Em qual cartão?", reply_markup=kb)
+                else:
+                    send_message(chat_id, f"✅ Atualizado para {method}!")
+            return "OK", 200
+
+        # Menus
+        if raw_data == '/menu': send_message(chat_id, "🤖 *Menu Principal*", reply_markup=get_main_menu_keyboard())
+        elif raw_data == 'menu_relatorios': send_message(chat_id, "📊 *Relatórios*", reply_markup=get_reports_keyboard())
+        elif raw_data == 'menu_config': send_message(chat_id, "⚙️ *Configurações*", reply_markup=get_config_keyboard())
+        elif raw_data == 'instrucao_conta': send_message(chat_id, "Digite: `/cadastrar_conta Nubank`")
+        
+        # CORREÇÃO: Instrução de Cartão com Datas
+        elif raw_data == 'instrucao_cartao': 
+            send_message(chat_id, "Para cadastrar cartão use:\n`/cadastrar_cartao Nome DiaFecha DiaVence`\n\nEx: _/cadastrar_cartao Nubank 04 11_")
 
         elif raw_data == '/apagar_ultimo':
-            last = db.get_last_transactions(chat_id, limit=1)
+            last = db.get_last_transactions(chat_id, 1)
             if last:
                 db.delete_transaction(last[0]['id'], chat_id)
-                send_message(chat_id, "🗑️ Último registro apagado com sucesso!")
+                send_message(chat_id, "🗑️ Apagado!")
             else:
-                send_message(chat_id, "Não encontrei nada para apagar.")
-
-        # --- Comandos Padrão ---
+                send_message(chat_id, "Nada para apagar.")
+        
         else:
-            response = commands.handle_command(raw_data, chat_id)
-            keyboard = get_main_menu_keyboard() if raw_data == '/ajuda' else None
-            send_message(chat_id, response, reply_markup=keyboard)
-            
+            resp = commands.handle_command(raw_data, chat_id)
+            send_message(chat_id, resp)
         return "OK", 200
 
-    # 2. TRATAMENTO DE MENSAGENS DE TEXTO
+    # 2. TRATA MENSAGENS (TEXTO OU FOTO)
     if 'message' in data:
         msg = data['message']
         chat_id = msg['chat']['id']
         text = msg.get('text', '').strip()
-        sender_name = msg['from'].get('first_name', 'Usuário')
+        sender_name = msg['from'].get('first_name', 'User')
+        image_bytes = None
 
-        # Cadastro Inicial
-        user = db.get_user(chat_id)
-        if not user:
-            if text.startswith('/'):
-                 send_message(chat_id, f"Olá {sender_name}! Bem-vindo. Para começar, diga-me como quer ser chamado.")
+        # Baixar Imagem (Se houver)
+        if 'photo' in msg:
+            try:
+                photo_id = msg['photo'][-1]['file_id']
+                f_info = requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getFile?file_id={photo_id}").json()
+                path = f_info['result']['file_path']
+                image_bytes = requests.get(f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{path}").content
+                text = msg.get('caption', '') # Usa legenda se tiver
+                send_message(chat_id, "🔎 Analisando imagem...")
+            except Exception as e:
+                logger.error(f"Erro imagem: {e}")
+
+        # Cadastro Rápido
+        if not db.get_user(chat_id):
+            if text.startswith('/'): send_message(chat_id, f"Olá {sender_name}! Qual seu nome?")
             else:
                 db.create_user(chat_id, text)
-                send_message(chat_id, f"Prazer, {text}! Use o menu abaixo para começar:", reply_markup=get_main_menu_keyboard())
+                send_message(chat_id, f"Oi {text}!", reply_markup=get_main_menu_keyboard())
             return "OK", 200
 
-        # Comandos de Texto Direto
-        if text == '/menu':
-             send_message(chat_id, "🤖 *Menu Principal*", reply_markup=get_main_menu_keyboard())
-             return "OK", 200
+        # Comandos Diretos
+        if text == '/menu': send_message(chat_id, "Menu:", reply_markup=get_main_menu_keyboard()); return "OK", 200
+        if text.startswith('/'): send_message(chat_id, commands.handle_command(text, chat_id)); return "OK", 200
 
-        if text.startswith('/'):
-            response = commands.handle_command(text, chat_id)
-            send_message(chat_id, response)
-            return "OK", 200
-
-        # --- INTEGRAÇÃO COM IA ---
-        ai_data = ai_parser.get_ai_response(text)
+        # IA Parser
+        ai_data = ai_parser.get_ai_response(text, image_bytes)
         
         if not ai_data:
-            send_message(chat_id, "🤔 Não entendi. Tente reformular ou use o /menu.")
+            send_message(chat_id, "Não entendi.")
             return "OK", 200
 
         intent = ai_data.get('intent')
         entities = ai_data.get('entities', {})
 
         if intent == 'register_transaction':
-            success = db.process_transaction_with_rpc(chat_id, entities)
-            
-            if success:
-                desc = entities.get('description', 'Gasto')
-                val = entities.get('amount', 0)
-                pay_method = entities.get('payment_method')
-                
-                # SE FOR CARTÃO DE CRÉDITO, PERGUNTA QUAL
-                if pay_method == 'credit_card':
-                    user_cards = db.get_user_cards(chat_id)
-                    if user_cards:
-                        kb_rows = []
-                        for c in user_cards:
-                            # Callback data: sel_card_ID
-                            kb_rows.append([{'text': f"💳 {c['name']}", 'callback_data': f"sel_card_{c['id']}"}])
-                        
-                        markup = {'inline_keyboard': kb_rows}
-                        send_message(chat_id, f"✅ Registrei R${val}. Em qual cartão?", reply_markup=markup)
-                    else:
-                        send_message(chat_id, f"✅ Registrado no Crédito. (Dica: Cadastre seus cartões em Configurações!)")
-                else:
-                    # Fluxo normal
-                    undo_kb = {'inline_keyboard': [[{'text': '🗑️ Desfazer (Apagar)', 'callback_data': '/apagar_ultimo'}]]}
-                    send_message(chat_id, f"✅ Registrado: *{desc}* (R${val})\nCategoria: {entities.get('category')}", reply_markup=undo_kb)
+            # Verifica Parcelamento
+            inst = entities.get('installments', 1)
+            if isinstance(inst, int) and inst > 1:
+                success = db.create_installments(chat_id, entities, inst)
+                msg_extra = f" (Em {inst}x)"
             else:
-                send_message(chat_id, "Erro ao gravar no banco.")
+                success = db.process_transaction_with_rpc(chat_id, entities)
+                msg_extra = ""
+
+            if success:
+                method = entities.get('payment_method')
+                val = entities.get('amount')
+                desc = entities.get('description')
+                
+                # Se for Crédito -> Pergunta Cartão
+                if method == 'credit_card':
+                    cards = db.get_user_cards(chat_id)
+                    kb = {'inline_keyboard': [[{'text': f"💳 {c['name']}", 'callback_data': f"sel_card_{c['id']}"}] for c in cards]} if cards else None
+                    send_message(chat_id, f"✅ Registrado R${val}{msg_extra}. Qual cartão?", reply_markup=kb)
+                
+                # Se não souber o método -> Pergunta
+                elif not method:
+                    kb = {'inline_keyboard': [[{'text': '💳 Crédito', 'callback_data': 'set_method_credit'}, {'text': '💸 Débito', 'callback_data': 'set_method_debit'}, {'text': 'Pix', 'callback_data': 'set_method_pix'}]]}
+                    send_message(chat_id, f"✅ Li R${val} em {desc}. Como pagou?", reply_markup=kb)
+                
+                else:
+                    undo = {'inline_keyboard': [[{'text': '🗑️ Desfazer', 'callback_data': '/apagar_ultimo'}]]}
+                    send_message(chat_id, f"✅ Salvo: {desc} (R${val}){msg_extra}", reply_markup=undo)
+            else:
+                send_message(chat_id, "Erro ao salvar.")
 
         elif intent == 'query_report':
             total = db.get_report(chat_id, entities.get('description'), entities.get('time_period'))
-            send_message(chat_id, f"📊 Total encontrado: R${total:.2f}")
+            send_message(chat_id, f"📊 Total: R${total:.2f}")
 
     return "OK", 200
 
 @app.route('/health', methods=['GET'])
-def health():
-    return "OK", 200
+def health(): return "OK", 200
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
