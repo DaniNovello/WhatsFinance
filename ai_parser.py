@@ -1,4 +1,3 @@
-# Arquivo: ai_parser.py
 import os
 import google.generativeai as genai
 import json
@@ -16,8 +15,7 @@ generation_config = {
     "response_mime_type": "application/json"
 }
 
-# ALTERADO: Tente 'gemini-1.5-flash-latest' ou apenas 'gemini-1.5-flash'
-# Se der erro de novo, use 'gemini-pro' (mas ele não suporta JSON nativo tão bem quanto o flash)
+# Usando modelo flash para rapidez e suporte a JSON nativo
 model = genai.GenerativeModel(
     model_name="gemini-1.5-flash-latest", 
     generation_config=generation_config
@@ -30,26 +28,29 @@ def get_ai_response(message_text, image_bytes=None):
     Se for pedido de fatura/relatório: 'query_report'.
 
     1. 'register_transaction':
-       - description: Nome do local/pessoa.
-       - amount: Valor (float).
-       - type: 'expense' ou 'income'.
-       - payment_method: 'credit_card', 'debit_card', 'pix', 'money' ou null.
+       - description: Nome do estabelecimento/pessoa.
+       - amount: Valor TOTAL da compra (float).
+       - type: 'expense' (gasto) ou 'income' (ganho).
+       - payment_method: 'credit_card', 'debit_card', 'pix', 'money' ou null (se não estiver claro na imagem/texto).
+       - installments: Número de parcelas (int). Se não mencionado, assuma 1.
        - category: Alimentação, Transporte, Lazer, Saúde, Casa, Outros.
 
     2. 'query_report':
        - description: termo de busca ou null.
-       - time_period: today, yesterday, this_week, this_month, current_invoice (para faturas).
+       - time_period: today, yesterday, this_week, this_month, current_invoice.
 
-    Mensagem: "{message_text}"
+    Contexto/Legenda: "{message_text}"
     """
     
     content = [prompt_text]
+    
+    # Se houver imagem, adiciona ao prompt
     if image_bytes:
         try:
             image = Image.open(io.BytesIO(image_bytes))
             content.append(image)
         except Exception as e:
-            logger.error(f"Erro imagem: {e}")
+            logger.error(f"Erro ao processar imagem: {e}")
 
     try:
         response = model.generate_content(content)
@@ -59,5 +60,4 @@ def get_ai_response(message_text, image_bytes=None):
         return None
 
 def get_financial_advice():
-    # Mantém simples para evitar erros
-    return "💡 Dica: Verifique a data de fechamento do seu cartão para ganhar até 40 dias de prazo!"
+    return "💡 Dica: Compras parceladas sem juros no cartão podem ajudar no fluxo de caixa, mas cuidado para não acumular!"
