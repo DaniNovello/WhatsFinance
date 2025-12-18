@@ -167,7 +167,7 @@ def delete_transaction(transaction_id, user_id):
         return True
     except: return False
 
-# --- Relatórios ---
+# --- Relatórios Completos ---
 def get_date_range(time_period):
     today = date.today()
     if time_period == 'today': return datetime.combine(today, time.min), datetime.combine(today, time.max)
