@@ -15,19 +15,17 @@ generation_config = {
     "response_mime_type": "application/json"
 }
 
-# --- MODELOS ESPECÍFICOS (Versão 002 - Mais Recente) ---
+# Tenta usar o 2.0 (mais novo). Se falhar, usa o 1.5 Flash (padrão estável).
 try:
-    model_flash = genai.GenerativeModel(
-        model_name="gemini-1.5-flash-002", 
+    model = genai.GenerativeModel(
+        model_name="gemini-2.0-flash-exp", 
         generation_config=generation_config
     )
-
-    model_pro = genai.GenerativeModel(
-        model_name="gemini-1.5-pro-002", 
+except:
+    model = genai.GenerativeModel(
+        model_name="gemini-1.5-flash", 
         generation_config=generation_config
     )
-except Exception as e:
-    logger.error(f"Erro ao inicializar modelos: {e}")
 
 def get_ai_response(message_text, image_bytes=None):
     prompt_text = f"""
@@ -50,26 +48,20 @@ def get_ai_response(message_text, image_bytes=None):
     
     content = [prompt_text]
     
-    # LÓGICA DE SELEÇÃO DE MODELO
     if image_bytes:
         try:
             image = Image.open(io.BytesIO(image_bytes))
             content.append(image)
-            logger.info("📸 Imagem: Usando Gemini 1.5 PRO-002")
-            selected_model = model_pro
+            logger.info("📸 Imagem anexada")
         except Exception as e:
             logger.error(f"Erro imagem: {e}")
-            selected_model = model_flash
-    else:
-        logger.info("📝 Texto: Usando Gemini 1.5 Flash-002")
-        selected_model = model_flash
 
     try:
-        response = selected_model.generate_content(content)
+        response = model.generate_content(content)
         return json.loads(response.text)
     except Exception as e:
         logger.error(f"Erro CRÍTICO na IA: {e}")
         return None
 
 def get_financial_advice():
-    return "💡 Dica: O melhor dia de compra é o dia do fechamento da sua fatura!"
+    return "💡 Dica: O Gemini sugere que você revise seus gastos recorrentes!"
