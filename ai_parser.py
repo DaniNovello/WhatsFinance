@@ -15,9 +15,9 @@ generation_config = {
     "response_mime_type": "application/json"
 }
 
-# Usando modelo flash para rapidez e suporte a JSON nativo
+# CORREÇÃO: Removido "-latest" que estava causando erro 404
 model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash-latest", 
+    model_name="gemini-1.5-flash", 
     generation_config=generation_config
 )
 
@@ -44,7 +44,6 @@ def get_ai_response(message_text, image_bytes=None):
     
     content = [prompt_text]
     
-    # Se houver imagem, adiciona ao prompt
     if image_bytes:
         try:
             image = Image.open(io.BytesIO(image_bytes))

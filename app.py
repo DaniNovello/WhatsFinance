@@ -1,4 +1,3 @@
-# Arquivo: app.py
 import os
 import requests
 import logging
@@ -12,6 +11,7 @@ import ai_parser
 load_dotenv()
 app = Flask(__name__)
 
+# Configuração de Logs mais detalhada
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -32,8 +32,12 @@ def get_config_keyboard():
 def send_message(chat_id, text, reply_markup=None):
     payload = {'chat_id': chat_id, 'text': text, 'parse_mode': 'Markdown'}
     if reply_markup: payload['reply_markup'] = reply_markup
-    try: requests.post(f"{TELEGRAM_API_URL}/sendMessage", json=payload)
-    except Exception as e: logger.error(f"Erro envio: {e}")
+    try: 
+        response = requests.post(f"{TELEGRAM_API_URL}/sendMessage", json=payload)
+        if response.status_code != 200:
+            logger.error(f"Erro Telegram API: {response.text}")
+    except Exception as e: 
+        logger.error(f"Erro envio requests: {e}")
 
 def answer_callback(callback_id):
     try: requests.post(f"{TELEGRAM_API_URL}/answerCallbackQuery", json={'callback_query_id': callback_id})
@@ -52,24 +56,32 @@ def webhook():
         raw_data = cb['data']
         answer_callback(cb['id'])
 
+        logger.info(f"🔘 BOTÃO CLICADO: {raw_data} por User {chat_id}") # LOG NOVO
+
         # Lógica de Seleção de Cartão
         if raw_data.startswith('sel_card_'):
-            card_id = int(raw_data.split('_')[2])
-            last = db.get_last_transactions(chat_id, 1)
-            if last:
-                db.update_transaction_card(last[0]['id'], card_id)
-                send_message(chat_id, "✅ Cartão vinculado com sucesso!")
+            logger.info("--> Entrou no fluxo sel_card")
+            try:
+                card_id = int(raw_data.split('_')[2])
+                last = db.get_last_transactions(chat_id, 1)
+                if last:
+                    db.update_transaction_card(last[0]['id'], card_id)
+                    send_message(chat_id, "✅ Cartão vinculado com sucesso!")
+                else:
+                    send_message(chat_id, "⚠️ Nenhuma transação recente para vincular.")
+            except Exception as e:
+                logger.error(f"Erro ao selecionar cartão: {e}")
             return "OK", 200
 
         # Lógica de Dúvida (Crédito ou Débito?)
-        if raw_data.startswith('set_method_'):
+        elif raw_data.startswith('set_method_'):
+            logger.info("--> Entrou no fluxo set_method")
             method = raw_data.replace('set_method_', '')
             method_db = 'credit_card' if method == 'credit' else 'debit_card' if method == 'debit' else 'pix'
             
             last = db.get_last_transactions(chat_id, 1)
             if last:
                 db.update_transaction_method(last[0]['id'], method_db)
-                # Se for crédito, pergunta qual cartão
                 if method_db == 'credit_card':
                     cards = db.get_user_cards(chat_id)
                     kb = {'inline_keyboard': [[{'text': f"💳 {c['name']}", 'callback_data': f"sel_card_{c['id']}"}] for c in cards]} if cards else None
@@ -79,16 +91,29 @@ def webhook():
             return "OK", 200
 
         # Menus
-        if raw_data == '/menu': send_message(chat_id, "🤖 *Menu Principal*", reply_markup=get_main_menu_keyboard())
-        elif raw_data == 'menu_relatorios': send_message(chat_id, "📊 *Relatórios*", reply_markup=get_reports_keyboard())
-        elif raw_data == 'menu_config': send_message(chat_id, "⚙️ *Configurações*", reply_markup=get_config_keyboard())
-        elif raw_data == 'instrucao_conta': send_message(chat_id, "Digite: `/cadastrar_conta Nubank`")
+        elif raw_data == '/menu': 
+            logger.info("--> Renderizando Menu Principal")
+            send_message(chat_id, "🤖 *Menu Principal*", reply_markup=get_main_menu_keyboard())
+
+        elif raw_data == 'menu_relatorios': 
+            logger.info("--> Renderizando Menu Relatórios")
+            send_message(chat_id, "📊 *Relatórios*", reply_markup=get_reports_keyboard())
+
+        elif raw_data == 'menu_config': 
+            logger.info("--> Renderizando Menu Configurações")
+            send_message(chat_id, "⚙️ *Configurações*", reply_markup=get_config_keyboard())
+
+        # --- BOTÕES DE INSTRUÇÃO (AQUI ESTAVA A DÚVIDA) ---
+        elif raw_data == 'instrucao_conta': 
+            logger.info("--> Clicou Nova Conta. Enviando instrução.")
+            send_message(chat_id, "Para criar uma conta, digite:\n`/cadastrar_conta Nubank`")
         
-        # CORREÇÃO: Instrução de Cartão com Datas
         elif raw_data == 'instrucao_cartao': 
+            logger.info("--> Clicou Novo Cartão. Enviando instrução.")
             send_message(chat_id, "Para cadastrar cartão use:\n`/cadastrar_cartao Nome DiaFecha DiaVence`\n\nEx: _/cadastrar_cartao Nubank 04 11_")
 
         elif raw_data == '/apagar_ultimo':
+            logger.info("--> Apagando último")
             last = db.get_last_transactions(chat_id, 1)
             if last:
                 db.delete_transaction(last[0]['id'], chat_id)
@@ -97,6 +122,7 @@ def webhook():
                 send_message(chat_id, "Nada para apagar.")
         
         else:
+            logger.info(f"--> Comando Genérico: {raw_data}")
             resp = commands.handle_command(raw_data, chat_id)
             send_message(chat_id, resp)
         return "OK", 200
@@ -109,14 +135,17 @@ def webhook():
         sender_name = msg['from'].get('first_name', 'User')
         image_bytes = None
 
+        logger.info(f"📩 MENSAGEM RECEBIDA de {chat_id}: {text[:20]}...")
+
         # Baixar Imagem (Se houver)
         if 'photo' in msg:
+            logger.info("📸 Foto detectada")
             try:
                 photo_id = msg['photo'][-1]['file_id']
                 f_info = requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getFile?file_id={photo_id}").json()
                 path = f_info['result']['file_path']
                 image_bytes = requests.get(f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{path}").content
-                text = msg.get('caption', '') # Usa legenda se tiver
+                text = msg.get('caption', '') 
                 send_message(chat_id, "🔎 Analisando imagem...")
             except Exception as e:
                 logger.error(f"Erro imagem: {e}")
@@ -131,15 +160,22 @@ def webhook():
 
         # Comandos Diretos
         if text == '/menu': send_message(chat_id, "Menu:", reply_markup=get_main_menu_keyboard()); return "OK", 200
-        if text.startswith('/'): send_message(chat_id, commands.handle_command(text, chat_id)); return "OK", 200
+        if text.startswith('/'): 
+            logger.info(f"Executando comando manual: {text}")
+            send_message(chat_id, commands.handle_command(text, chat_id)); 
+            return "OK", 200
 
         # IA Parser
+        logger.info("🧠 Enviando para IA...")
         ai_data = ai_parser.get_ai_response(text, image_bytes)
         
         if not ai_data:
+            logger.warning("⚠️ IA retornou None")
             send_message(chat_id, "Não entendi.")
             return "OK", 200
 
+        logger.info(f"🧠 Retorno IA: {ai_data}")
+        
         intent = ai_data.get('intent')
         entities = ai_data.get('entities', {})
 
@@ -173,6 +209,7 @@ def webhook():
                     undo = {'inline_keyboard': [[{'text': '🗑️ Desfazer', 'callback_data': '/apagar_ultimo'}]]}
                     send_message(chat_id, f"✅ Salvo: {desc} (R${val}){msg_extra}", reply_markup=undo)
             else:
+                logger.error("Erro ao salvar no banco")
                 send_message(chat_id, "Erro ao salvar.")
 
         elif intent == 'query_report':
