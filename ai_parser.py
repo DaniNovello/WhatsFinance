@@ -1,4 +1,3 @@
-# Arquivo: ai_parser.py
 import os
 import google.generativeai as genai
 import json
@@ -16,39 +15,39 @@ generation_config = {
     "response_mime_type": "application/json"
 }
 
-# CORREÇÃO: Uso de versão específica (001) para resolver o erro 404
+# CORREÇÃO: Usando o alias padrão que é mais estável para visão
 model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash-001", 
+    model_name="gemini-1.5-flash", 
     generation_config=generation_config
 )
 
 def get_ai_response(message_text, image_bytes=None):
     prompt_text = f"""
     Analise a entrada (texto e/ou imagem) e retorne um JSON.
-    Se for financeiro: extraia para 'register_transaction'.
-    Se for pedido de fatura/relatório: 'query_report'.
-
+    
     1. 'register_transaction':
        - description: Nome do estabelecimento/pessoa.
-       - amount: Valor TOTAL da compra (float).
+       - amount: Valor TOTAL (float).
        - type: 'expense' (gasto) ou 'income' (ganho).
-       - payment_method: 'credit_card', 'debit_card', 'pix', 'money' ou null (se não estiver claro na imagem/texto).
-       - installments: Número de parcelas (int). Se não mencionado, assuma 1.
-       - category: Alimentação, Transporte, Lazer, Saúde, Casa, Outros.
+       - payment_method: 'credit_card', 'debit_card', 'pix', 'money' ou null (se duvida).
+       - installments: Número de parcelas (int). Padrão 1.
+       - category: Sugira uma categoria (Alimentação, Transporte, etc).
 
     2. 'query_report':
        - description: termo de busca ou null.
        - time_period: today, yesterday, this_week, this_month, current_invoice.
 
-    Contexto/Legenda: "{message_text}"
+    Contexto: "{message_text}"
     """
     
     content = [prompt_text]
     
+    # Adiciona a imagem se existir
     if image_bytes:
         try:
             image = Image.open(io.BytesIO(image_bytes))
             content.append(image)
+            logger.info("📸 Imagem anexada ao prompt da IA")
         except Exception as e:
             logger.error(f"Erro ao processar imagem: {e}")
 
@@ -60,4 +59,4 @@ def get_ai_response(message_text, image_bytes=None):
         return None
 
 def get_financial_advice():
-    return "💡 Dica: Compras parceladas sem juros no cartão podem ajudar no fluxo de caixa, mas cuidado para não acumular!"
+    return "💡 Dica: O melhor dia de compra é o dia do fechamento da sua fatura!"
