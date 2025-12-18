@@ -1,4 +1,3 @@
-# Arquivo: commands.py
 import db
 from datetime import datetime
 import ai_parser

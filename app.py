@@ -156,11 +156,16 @@ def webhook():
                 path = file_info['result']['file_path']
                 image_bytes = requests.get(f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{path}").content
                 text = msg.get('caption', '')
-                send_message(chat_id, "🔎 Analisando com IA Avançada...")
+                send_message(chat_id, "🔎 Analisando imagem...")
             except: pass
 
         if not db.get_user(chat_id):
             db.create_user(chat_id, msg['from'].get('first_name', 'User'))
+
+        # --- CORREÇÃO MENU ---
+        if text == '/menu': 
+            send_message(chat_id, "🤖 *Menu Principal*", reply_markup=get_main_menu_keyboard())
+            return "OK", 200
 
         if text.startswith('/'):
             send_message(chat_id, commands.handle_command(text, chat_id))
