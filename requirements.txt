@@ -3,6 +3,6 @@ requests
 supabase
 python-dotenv
 gunicorn
-google-generativeai
+google-generativeai>=0.8.3
 Pillow
 python-dateutil

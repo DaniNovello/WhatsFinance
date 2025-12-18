@@ -25,6 +25,11 @@ def create_account(user_id, account_name):
     response = supabase.table('accounts').insert({"user_id": user_id, "name": account_name}).execute()
     return response.data[0] if response.data else None
 
+def get_user_accounts(user_id):
+    """Retorna lista de contas (id, nome) para seleção."""
+    response = supabase.table('accounts').select('id, name').eq('user_id', user_id).execute()
+    return response.data if response.data else []
+
 def get_accounts_balance(user_id):
     response = supabase.table('accounts').select('name, balance').eq('user_id', user_id).execute()
     return response.data if response.data else []
@@ -84,55 +89,85 @@ def process_transaction_with_rpc(user_id, data):
             'p_category': data.get('category'),
             'p_card_id': data.get('card_id')
         }
+        # O RPC atualiza saldo geral, mas não linka account_id. Faremos isso no passo interativo.
         supabase.rpc('handle_transaction_and_update_balance', params).execute()
         return True
     except Exception as e:
-        print(f"Erro no RPC: {e}")
+        print(f"Erro RPC: {e}")
         return False
 
 def create_installments(user_id, data, installments):
-    """Cria N transações futuras para compras parceladas."""
     try:
-        total_amount = float(data.get('amount', 0))
-        installment_value = total_amount / installments
+        total = float(data.get('amount', 0))
+        val = total / installments
         base_desc = data.get('description', 'Compra')
         base_date = datetime.now()
-        
         for i in range(installments):
-            # Soma meses à data atual
-            future_date = base_date + relativedelta(months=i)
-            
+            future = base_date + relativedelta(months=i)
             payload = {
                 "user_id": user_id,
                 "description": f"{base_desc} ({i+1}/{installments})",
-                "amount": installment_value,
+                "amount": val,
                 "type": data.get('type'),
                 "payment_method": data.get('payment_method'),
                 "category": data.get('category'),
                 "card_id": data.get('card_id'),
-                "transaction_date": future_date.isoformat()
+                "transaction_date": future.isoformat()
             }
             supabase.table('transactions').insert(payload).execute()
         return True
-    except Exception as e:
-        print(f"Erro parcelas: {e}")
-        return False
+    except: return False
 
 def update_transaction_method(transaction_id, method):
-    """Atualiza se foi Crédito, Débito ou Pix."""
     try:
         supabase.table('transactions').update({'payment_method': method}).eq('id', transaction_id).execute()
         return True
     except: return False
 
 def update_transaction_card(transaction_id, card_id):
-    """Associa a transação a um cartão específico."""
     try:
         supabase.table('transactions').update({'card_id': card_id}).eq('id', transaction_id).execute()
         return True
     except: return False
 
-# --- Relatórios e Utilitários ---
+def update_transaction_account(transaction_id, account_id):
+    """Associa transação a uma conta e ATUALIZA O SALDO."""
+    try:
+        # 1. Atualiza o ID da conta na transação
+        supabase.table('transactions').update({'account_id': account_id}).eq('id', transaction_id).execute()
+        
+        # 2. Busca o valor da transação para ajustar o saldo da conta específica
+        trans = supabase.table('transactions').select('amount, type').eq('id', transaction_id).single().execute()
+        if trans.data:
+            amount = float(trans.data['amount'])
+            tipo = trans.data['type']
+            
+            # Busca saldo atual da conta
+            acc = supabase.table('accounts').select('balance').eq('id', account_id).single().execute()
+            current_bal = float(acc.data['balance'])
+            
+            # Calcula novo saldo
+            if tipo == 'income': new_bal = current_bal + amount
+            else: new_bal = current_bal - amount # Expense
+            
+            # Atualiza conta
+            supabase.table('accounts').update({'balance': new_bal}).eq('id', account_id).execute()
+            return True
+    except Exception as e:
+        print(f"Erro update conta: {e}")
+        return False
+
+def get_last_transactions(user_id, limit=5):
+    response = supabase.table('transactions').select('id, description, amount, type').eq('user_id', user_id).order('transaction_date', desc=True).limit(limit).execute()
+    return response.data if response.data else []
+
+def delete_transaction(transaction_id, user_id):
+    try:
+        supabase.rpc('delete_transaction_and_revert_balance', {'p_transaction_id': transaction_id, 'p_user_id': user_id}).execute()
+        return True
+    except: return False
+
+# --- Relatórios ---
 def get_date_range(time_period):
     today = date.today()
     if time_period == 'today': return datetime.combine(today, time.min), datetime.combine(today, time.max)
@@ -165,13 +200,3 @@ def get_detailed_report(user_id, time_period):
     if not start_date: return []
     response = supabase.table('transactions').select('description, amount, transaction_date, category').eq('user_id', user_id).eq('type', 'expense').gte('transaction_date', start_date.isoformat()).lte('transaction_date', end_date.isoformat()).order('transaction_date').execute()
     return response.data if response.data else []
-
-def get_last_transactions(user_id, limit=5):
-    response = supabase.table('transactions').select('id, description, amount, type').eq('user_id', user_id).order('transaction_date', desc=True).limit(limit).execute()
-    return response.data if response.data else []
-
-def delete_transaction(transaction_id, user_id):
-    try:
-        supabase.rpc('delete_transaction_and_revert_balance', {'p_transaction_id': transaction_id, 'p_user_id': user_id}).execute()
-        return True
-    except: return False
