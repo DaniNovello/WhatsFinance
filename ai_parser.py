@@ -17,7 +17,7 @@ generation_config = {
 
 # CORREÇÃO: Usando o alias padrão que é mais estável para visão
 model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash", 
+    model_name="gemini-1.5-flash-001", 
     generation_config=generation_config
 )
 
