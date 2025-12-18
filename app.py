@@ -80,7 +80,7 @@ def webhook():
                     kb = {'inline_keyboard': [[{'text': f"💳 {c['name']}", 'callback_data': f"sel_card_{c['id']}"}] for c in cards]} if cards else None
                     send_message(chat_id, "Em qual cartão?", reply_markup=kb)
                 
-                # Se for Débito ou Pix -> Pergunta Conta (Para abater do saldo correto)
+                # Se for Débito ou Pix -> Pergunta Conta
                 else:
                     accs = db.get_user_accounts(chat_id)
                     kb = {'inline_keyboard': [[{'text': f"🏦 {a['name']}", 'callback_data': f"sel_acc_{a['id']}"}] for a in accs]} if accs else None
@@ -217,6 +217,10 @@ def webhook():
                 send_message(chat_id, f"📊 Total: R${total:.2f}")
 
     return "OK", 200
+
+# Correção para o erro 404 nos logs do Health Check
+@app.route('/health', methods=['GET', 'HEAD'])
+def health(): return "OK", 200
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)

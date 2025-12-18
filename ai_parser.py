@@ -15,22 +15,23 @@ generation_config = {
     "response_mime_type": "application/json"
 }
 
-# --- ESTRATÉGIA HÍBRIDA ---
-# Modelo Rápido (Texto simples)
-model_flash = genai.GenerativeModel(
-    model_name="gemini-1.5-flash", 
-    generation_config=generation_config
-)
+# --- MODELOS ESPECÍFICOS (Versão 002 - Mais Recente) ---
+try:
+    model_flash = genai.GenerativeModel(
+        model_name="gemini-1.5-flash-002", 
+        generation_config=generation_config
+    )
 
-# Modelo Potente (Visão/Imagens)
-model_pro = genai.GenerativeModel(
-    model_name="gemini-1.5-pro", 
-    generation_config=generation_config
-)
+    model_pro = genai.GenerativeModel(
+        model_name="gemini-1.5-pro-002", 
+        generation_config=generation_config
+    )
+except Exception as e:
+    logger.error(f"Erro ao inicializar modelos: {e}")
 
 def get_ai_response(message_text, image_bytes=None):
     prompt_text = f"""
-    Aja como um especialista contábil. Analise a entrada e extraia JSON.
+    Aja como um contador especialista. Analise a entrada e extraia JSON.
     
     1. 'register_transaction':
        - description: Nome do estabelecimento/pessoa.
@@ -54,20 +55,20 @@ def get_ai_response(message_text, image_bytes=None):
         try:
             image = Image.open(io.BytesIO(image_bytes))
             content.append(image)
-            logger.info("📸 Imagem detectada: Usando Gemini 1.5 PRO")
+            logger.info("📸 Imagem: Usando Gemini 1.5 PRO-002")
             selected_model = model_pro
         except Exception as e:
             logger.error(f"Erro imagem: {e}")
             selected_model = model_flash
     else:
-        logger.info("📝 Apenas texto: Usando Gemini 1.5 Flash")
+        logger.info("📝 Texto: Usando Gemini 1.5 Flash-002")
         selected_model = model_flash
 
     try:
         response = selected_model.generate_content(content)
         return json.loads(response.text)
     except Exception as e:
-        logger.error(f"Erro na IA: {e}")
+        logger.error(f"Erro CRÍTICO na IA: {e}")
         return None
 
 def get_financial_advice():
