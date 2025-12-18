@@ -21,11 +21,18 @@ def format_detailed_report(transactions):
             else:
                 data_fmt = "--/--"
             
-            report_lines.append(f"▫️ {desc}: R${amount:.2f} ({data_fmt})")
+            # Ícone baseado no tipo (se existir no banco, senão assume gasto)
+            tipo = trans.get('type', 'expense')
+            icon = "🟢" if tipo == 'income' else "🔴"
+            
+            report_lines.append(f"{icon} {desc}: R${amount:.2f} ({data_fmt})")
             
             # Agrupa categorias
-            cat = trans.get('category') or desc # Usa descrição se não tiver categoria
+            cat = trans.get('category') or desc 
             category_totals[cat] = category_totals.get(cat, 0) + amount
+            
+            # Soma total (considerando entradas e saídas se necessário, 
+            # aqui estou somando valores absolutos para extrato, ajuste conforme lógica de negócio)
             grand_total += amount
         except Exception as e:
             continue
@@ -35,7 +42,8 @@ def format_detailed_report(transactions):
         summary_lines.append(f"▪️ {category}: R${total:.2f}")
     
     final_report = "\n".join(report_lines) + "\n------------------\n" + "\n".join(summary_lines)
-    final_report += f"\n\n💰 *Total:* R${grand_total:.2f}"
+    # Nota: O total aqui é a soma das movimentações do relatório
+    final_report += f"\n\n💰 *Movimentado:* R${grand_total:.2f}"
     return final_report
 
 def handle_command(command, user_id):
@@ -69,7 +77,6 @@ Vamos começar? 👇
         db.create_account(user_id, account_name)
         return f"✅ Conta *{account_name}* criada com sucesso!"
 
-    # --- CORREÇÃO: APENAS UMA VERSÃO DO CADASTRAR CARTÃO (A NOVA) ---
     elif cmd == 'cadastrar_cartao':
         # Formato: /cadastrar_cartao Nome DiaFecha DiaVence
         if len(parts) < 4: 
@@ -95,14 +102,40 @@ Vamos começar? 👇
         msg += f"\n💰 *Total:* R${total:.2f}"
         return msg
 
+    # --- CORREÇÃO AQUI: SALDO COM FATURA ---
     elif cmd == 'saldo':
+        # 1. Busca Saldo em Contas (Ativos)
         accounts = db.get_accounts_balance(user_id)
-        if not accounts: return "Você ainda não tem contas cadastradas. Vá em Configurações para adicionar."
-        response_text = "💰 *Seus Saldos:*\n\n"
-        total = sum(acc.get('balance', 0) for acc in accounts)
-        for acc in accounts:
-            response_text += f"🏦 *{acc.get('name')}:* R${acc.get('balance', 0):.2f}\n"
-        response_text += f"\n*Patrimônio Total:* R${total:.2f}"
+        total_cash = sum(acc.get('balance', 0) for acc in accounts)
+
+        # 2. Busca Faturas em Aberto (Passivos)
+        total_invoice, invoice_details = db.get_invoice_total(user_id)
+
+        # Monta a Mensagem
+        response_text = "💰 *Resumo Financeiro:*\n\n"
+        
+        if accounts:
+            response_text += "*🏦 Contas (Disponível):*\n"
+            for acc in accounts:
+                response_text += f"▫️ {acc.get('name')}: R${acc.get('balance', 0):.2f}\n"
+        else:
+            response_text += "🏦 Nenhuma conta cadastrada.\n"
+
+        if invoice_details:
+            response_text += "\n*💳 Faturas Abertas (Dívida):*\n"
+            for inv in invoice_details:
+                response_text += f"▪️ {inv['card']}: -R${inv['total']:.2f} (Vence: {inv['due_day']})\n"
+        else:
+            response_text += "\n💳 Nenhuma fatura aberta.\n"
+
+        # Cálculo do Saldo Líquido
+        net_worth = total_cash - total_invoice
+        
+        response_text += "\n====================\n"
+        response_text += f"💵 *Total em Conta:* R${total_cash:.2f}\n"
+        response_text += f"📉 *Total Faturas:* -R${total_invoice:.2f}\n"
+        response_text += f"📊 *Saldo Líquido:* R${net_worth:.2f}"
+        
         return response_text
 
     elif cmd == 'ultimos':

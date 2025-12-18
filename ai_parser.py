@@ -16,24 +16,18 @@ generation_config = {
     "response_mime_type": "application/json"
 }
 
-# --- MODELO ESTÁVEL E ROBUSTO ---
-# Usamos o 1.5 Flash padrão. Ele é rápido, aceita imagens e tem cota alta.
-model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash", 
-    generation_config=generation_config
-)
-
 def get_ai_response(message_text, image_bytes=None):
+    # Prompt ajustado para entender ENTRADAS (income)
     prompt_text = f"""
-    Aja como um assistente financeiro. Analise a entrada e extraia um JSON.
+    Aja como um assistente financeiro pessoal. Analise a entrada e extraia um JSON.
     
     1. 'register_transaction':
-       - description: Nome do local/pessoa.
-       - amount: Valor (float).
-       - type: 'expense' (gasto) ou 'income' (ganho).
+       - description: Nome do estabelecimento ou pessoa.
+       - amount: Valor numérico (float). Use ponto para decimais.
+       - type: 'expense' (para gastos/saídas) ou 'income' (para ganhos/entradas/depósitos).
        - payment_method: 'credit_card', 'debit_card', 'pix', 'money' ou null.
-       - installments: Parcelas (int). Padrão 1.
-       - category: Categoria (Alimentação, Transporte, Casa, Lazer).
+       - installments: Número de parcelas (int). Padrão 1.
+       - category: Sugira uma categoria (Ex: Alimentação, Transporte, Salário, Renda Extra).
 
     2. 'query_report':
        - description: termo de busca ou null.
@@ -52,21 +46,15 @@ def get_ai_response(message_text, image_bytes=None):
         except Exception as e:
             logger.error(f"Erro ao processar imagem: {e}")
 
+    # Usa o modelo FLASH 1.5 padrão (Mais estável e gratuito)
+    model = genai.GenerativeModel("gemini-1.5-flash", generation_config=generation_config)
+
     try:
-        # Tenta gerar a resposta
         response = model.generate_content(content)
         return json.loads(response.text)
     except Exception as e:
         logger.error(f"Erro na IA: {e}")
-        # Se der erro de cota (429), espera um pouco e tenta de novo (simples retry)
-        if "429" in str(e):
-            time.sleep(2)
-            try:
-                response = model.generate_content(content)
-                return json.loads(response.text)
-            except:
-                return None
         return None
 
 def get_financial_advice():
-    return "💡 Dica: Evite gastos impulsivos!"
+    return "💡 Dica: Para ter um saldo real positivo, mantenha suas faturas de cartão menores que seu dinheiro em conta!"
