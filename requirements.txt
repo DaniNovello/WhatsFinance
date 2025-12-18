@@ -3,6 +3,7 @@ requests
 supabase
 python-dotenv
 gunicorn
-google-generativeai>=0.8.3
+# Atualizado para garantir suporte aos novos modelos Gemini
+google-generativeai>=1.0.0
 Pillow
 python-dateutil

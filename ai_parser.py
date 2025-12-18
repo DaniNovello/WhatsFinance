@@ -16,6 +16,24 @@ generation_config = {
     "response_mime_type": "application/json"
 }
 
+import os
+import google.generativeai as genai
+import json
+import logging
+from PIL import Image
+import io
+import time
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+
+generation_config = {
+    "temperature": 0.2,
+    "response_mime_type": "application/json"
+}
+
 def get_ai_response(message_text, image_bytes=None):
     # Prompt ajustado para entender ENTRADAS (income)
     prompt_text = f"""
@@ -46,14 +64,15 @@ def get_ai_response(message_text, image_bytes=None):
         except Exception as e:
             logger.error(f"Erro ao processar imagem: {e}")
 
-    # Usa o modelo FLASH 1.5 padrão (Mais estável e gratuito)
-    model = genai.GenerativeModel("gemini-1.5-flash", generation_config=generation_config)
+    # ATUALIZADO: Usando o modelo gemini-2.5-flash que substituiu o 1.5
+    model = genai.GenerativeModel("gemini-2.5-flash", generation_config=generation_config)
 
     try:
         response = model.generate_content(content)
         return json.loads(response.text)
     except Exception as e:
         logger.error(f"Erro na IA: {e}")
+        # Retorna None para que o bot avise que não entendeu, em vez de quebrar
         return None
 
 def get_financial_advice():
