@@ -7,7 +7,7 @@ url: str = os.environ.get("SUPABASE_URL")
 key: str = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(url, key)
 
-# --- Funções de Usuário ---
+# --- USUÁRIO ---
 def get_user(telegram_id):
     response = supabase.table('users').select('*').eq('id', telegram_id).limit(1).execute()
     return response.data[0] if response.data else None
@@ -16,17 +16,12 @@ def create_user(telegram_id, name):
     response = supabase.table('users').insert({"id": telegram_id, "name": name}).execute()
     return response.data[0] if response.data else None
 
-def get_all_users():
-    response = supabase.table('users').select('id, name').execute()
-    return response.data if response.data else []
-
-# --- Funções de Conta e Cartão ---
+# --- CONTAS E CARTÕES ---
 def create_account(user_id, account_name):
-    response = supabase.table('accounts').insert({"user_id": user_id, "name": account_name}).execute()
+    response = supabase.table('accounts').insert({"user_id": user_id, "name": account_name, "balance": 0.0}).execute()
     return response.data[0] if response.data else None
 
 def get_user_accounts(user_id):
-    """Retorna lista de contas (id, nome) para seleção."""
     response = supabase.table('accounts').select('id, name').eq('user_id', user_id).execute()
     return response.data if response.data else []
 
@@ -44,6 +39,7 @@ def get_user_cards(user_id):
     return response.data if response.data else []
 
 def get_invoice_total(user_id, card_id=None):
+    """Calcula o total da fatura aberta para cada cartão."""
     query = supabase.table('credit_cards').select('*').eq('user_id', user_id)
     if card_id: query = query.eq('id', card_id)
     cards = query.execute().data
@@ -56,8 +52,10 @@ def get_invoice_total(user_id, card_id=None):
     
     for card in cards:
         c_day = card.get('closing_day', 1)
+        # Lógica simplificada de fechamento
         if today.day >= c_day:
             start_date = date(today.year, today.month, c_day)
+            # Vai até o próximo fechamento
             next_month = today.replace(day=28) + timedelta(days=4)
             end_date = date(next_month.year, next_month.month, c_day) - timedelta(days=1)
         else:
@@ -66,7 +64,8 @@ def get_invoice_total(user_id, card_id=None):
             start_date = date(last_month.year, last_month.month, c_day)
             end_date = date(today.year, today.month, c_day) - timedelta(days=1)
 
-        trans = supabase.table('transactions').select('amount').eq('user_id', user_id).eq('card_id', card['id'])\
+        trans = supabase.table('transactions').select('amount')\
+            .eq('user_id', user_id).eq('card_id', card['id'])\
             .gte('transaction_date', start_date.isoformat())\
             .lte('transaction_date', end_date.isoformat()).execute().data
             
@@ -76,8 +75,7 @@ def get_invoice_total(user_id, card_id=None):
 
     return total_invoice, details
 
-# --- Funções de Transação ---
-
+# --- TRANSAÇÕES ---
 def process_transaction_with_rpc(user_id, data):
     try:
         params = {
@@ -89,7 +87,7 @@ def process_transaction_with_rpc(user_id, data):
             'p_category': data.get('category'),
             'p_card_id': data.get('card_id')
         }
-        # O RPC atualiza saldo geral, mas não linka account_id. Faremos isso no passo interativo.
+        # RPC padrão (insere transação). A atualização de saldo de conta específica é feita depois via update_transaction_account
         supabase.rpc('handle_transaction_and_update_balance', params).execute()
         return True
     except Exception as e:
@@ -131,26 +129,28 @@ def update_transaction_card(transaction_id, card_id):
     except: return False
 
 def update_transaction_account(transaction_id, account_id):
-    """Associa transação a uma conta e ATUALIZA O SALDO."""
+    """Vincula a transação a uma conta e ATUALIZA O SALDO DA CONTA."""
     try:
         # 1. Atualiza o ID da conta na transação
         supabase.table('transactions').update({'account_id': account_id}).eq('id', transaction_id).execute()
         
-        # 2. Busca o valor da transação para ajustar o saldo da conta específica
+        # 2. Pega os dados para ajustar o saldo
         trans = supabase.table('transactions').select('amount, type').eq('id', transaction_id).single().execute()
         if trans.data:
             amount = float(trans.data['amount'])
             tipo = trans.data['type']
             
-            # Busca saldo atual da conta
+            # Pega saldo atual
             acc = supabase.table('accounts').select('balance').eq('id', account_id).single().execute()
             current_bal = float(acc.data['balance'])
             
-            # Calcula novo saldo
-            if tipo == 'income': new_bal = current_bal + amount
-            else: new_bal = current_bal - amount # Expense
+            # Calcula novo saldo (Se for Income soma, se for Expense subtrai)
+            if tipo == 'income': 
+                new_bal = current_bal + amount
+            else: 
+                new_bal = current_bal - amount
             
-            # Atualiza conta
+            # Salva
             supabase.table('accounts').update({'balance': new_bal}).eq('id', account_id).execute()
             return True
     except Exception as e:
@@ -167,36 +167,31 @@ def delete_transaction(transaction_id, user_id):
         return True
     except: return False
 
-# --- Relatórios e Datas (ESTAS ERAM AS FUNÇÕES QUE FALTAVAM) ---
+# --- RELATÓRIOS ---
 def get_date_range(time_period):
     today = date.today()
     if time_period == 'today': return datetime.combine(today, time.min), datetime.combine(today, time.max)
     if time_period == 'yesterday':
-        yesterday = today - timedelta(days=1)
-        return datetime.combine(yesterday, time.min), datetime.combine(yesterday, time.max)
+        y = today - timedelta(days=1)
+        return datetime.combine(y, time.min), datetime.combine(y, time.max)
     if time_period == 'this_week':
-        start_of_week = today - timedelta(days=today.weekday())
-        return datetime.combine(start_of_week, time.min), datetime.combine(today, time.max)
-    if time_period == 'last_week':
-        end_of_last_week = today - timedelta(days=today.weekday() + 1)
-        start_of_last_week = end_of_last_week - timedelta(days=6)
-        return datetime.combine(start_of_last_week, time.min), datetime.combine(end_of_last_week, time.max)
+        start = today - timedelta(days=today.weekday())
+        return datetime.combine(start, time.min), datetime.combine(today, time.max)
     if time_period == 'this_month':
-        start_of_month = today.replace(day=1)
-        return datetime.combine(start_of_month, time.min), datetime.combine(today, time.max)
+        start = today.replace(day=1)
+        return datetime.combine(start, time.min), datetime.combine(today, time.max)
     return None, None
 
 def get_report(user_id, description, time_period):
-    start_date, end_date = get_date_range(time_period)
-    if not start_date: return 0
-    query = supabase.table('transactions').select('amount', count='exact').eq('user_id', user_id).eq('type', 'expense').gte('transaction_date', start_date.isoformat()).lte('transaction_date', end_date.isoformat())
-    if description:
-        query = query.ilike('description', f'%{description}%')
-    response = query.execute()
-    return sum(float(item['amount']) for item in response.data) if response.data else 0
+    start, end = get_date_range(time_period)
+    if not start: return 0
+    query = supabase.table('transactions').select('amount').eq('user_id', user_id).eq('type', 'expense').gte('transaction_date', start.isoformat()).lte('transaction_date', end.isoformat())
+    if description: query = query.ilike('description', f'%{description}%')
+    resp = query.execute()
+    return sum(float(i['amount']) for i in resp.data) if resp.data else 0
 
 def get_detailed_report(user_id, time_period):
-    start_date, end_date = get_date_range(time_period)
-    if not start_date: return []
-    response = supabase.table('transactions').select('description, amount, transaction_date, category').eq('user_id', user_id).eq('type', 'expense').gte('transaction_date', start_date.isoformat()).lte('transaction_date', end_date.isoformat()).order('transaction_date').execute()
-    return response.data if response.data else []
+    start, end = get_date_range(time_period)
+    if not start: return []
+    resp = supabase.table('transactions').select('description, amount, transaction_date, category, type').eq('user_id', user_id).gte('transaction_date', start.isoformat()).lte('transaction_date', end.isoformat()).order('transaction_date').execute()
+    return resp.data if resp.data else []
