@@ -35,7 +35,7 @@ def login():
             u = db.get_user(t_id)
             login_user(User(u['id'], u['name']))
             return redirect(url_for('web.dashboard'))
-        flash('❌ Login inválido.')
+        flash('Credenciais inválidas.')
     return render_template_string(tpl.BASE_LAYOUT.replace('{content_body}', tpl.LOGIN_PAGE))
 
 @web_bp.route('/register')
@@ -46,27 +46,27 @@ def register_page():
 def send_code():
     t_id = request.form.get('telegram_id')
     if not db.get_user(t_id):
-        flash("⚠️ Usuário não encontrado. Inicie o bot primeiro.")
+        flash("ID não encontrado. Inicie o bot no Telegram.")
         return redirect(url_for('web.register_page'))
     code = str(random.randint(100000, 999999))
     db.set_verification_code(t_id, code)
-    send_telegram_msg(t_id, f"🔐 *Seu Código Web:*\n\n`{code}`")
+    send_telegram_msg(t_id, f"🔐 *Código de Acesso:*\n\n`{code}`")
     return render_template_string(tpl.BASE_LAYOUT.replace('{content_body}', tpl.VERIFY_PAGE), telegram_id=t_id)
 
 @web_bp.route('/verify_setup', methods=['POST'])
 def verify_setup():
     t_id, code, pwd = request.form.get('telegram_id'), request.form.get('code'), request.form.get('password')
     if db.verify_code_and_set_password(t_id, code, pwd):
-        flash("✅ Senha criada! Faça login.")
+        flash("Senha definida com sucesso.")
         return redirect(url_for('web.login'))
-    flash("❌ Código incorreto.")
+    flash("Código incorreto.")
     return redirect(url_for('web.register_page'))
 
 @web_bp.route('/dashboard')
 @login_required
 def dashboard():
     uid = current_user.id
-    accs, recent = db.get_user_accounts(uid), db.get_last_transactions(uid, 10)
+    accs, recent = db.get_user_accounts(uid), db.get_last_transactions(uid, 5) # Top 5 apenas
     total_acc = sum(float(a['balance']) for a in accs)
     try: total_invoice, invoice_details = db.get_invoice_total(uid)
     except: total_invoice, invoice_details = 0.0, []
@@ -80,7 +80,7 @@ def dashboard():
 @login_required
 def list_transactions():
     transactions = db.get_all_transactions(current_user.id)
-    return render_template_string(tpl.BASE_LAYOUT.replace('{content_body}', tpl.TRANSACTIONS_LIST_PAGE), transactions=transactions)
+    return render_template_string(tpl.BASE_LAYOUT.replace('{content_body}', tpl.TRANSACTIONS_LIST_PAGE), transactions=transactions, user=current_user)
 
 @web_bp.route('/transaction/new', methods=['GET', 'POST'])
 @login_required
@@ -88,9 +88,9 @@ def new_transaction():
     if request.method == 'POST':
         data = {k: request.form.get(k) for k in ['type', 'description', 'amount', 'category', 'payment_method', 'account_id', 'card_id', 'date']}
         if db.add_transaction_manual(current_user.id, data):
-            flash("✅ Transação adicionada!")
+            flash("Registro adicionado.")
             return redirect(url_for('web.dashboard'))
-        flash("❌ Erro ao adicionar.")
+        flash("Erro ao salvar.")
     
     accs, cards = db.get_user_accounts(current_user.id), db.get_user_cards(current_user.id)
     now_str = datetime.now().strftime('%Y-%m-%dT%H:%M')
@@ -102,9 +102,9 @@ def edit_transaction(id):
     if request.method == 'POST':
         data = {k: request.form.get(k) for k in ['type', 'description', 'amount', 'category', 'payment_method', 'account_id', 'card_id', 'date']}
         if db.update_transaction(current_user.id, id, data):
-            flash("✅ Transação atualizada!")
+            flash("Registro atualizado.")
             return redirect(url_for('web.list_transactions'))
-        flash("❌ Erro ao atualizar.")
+        flash("Erro ao atualizar.")
     
     t = db.get_transaction(id, current_user.id)
     if not t: return redirect(url_for('web.list_transactions'))
@@ -116,8 +116,8 @@ def edit_transaction(id):
 @web_bp.route('/transaction/delete/<id>')
 @login_required
 def delete_transaction_route(id):
-    if db.delete_transaction(id, current_user.id): flash("🗑️ Excluída.")
-    else: flash("❌ Erro ao excluir.")
+    if db.delete_transaction(id, current_user.id): flash("Registro removido.")
+    else: flash("Erro ao remover.")
     return redirect(url_for('web.list_transactions'))
 
 @web_bp.route('/logout')
