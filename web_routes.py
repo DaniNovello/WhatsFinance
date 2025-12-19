@@ -50,14 +50,14 @@ def send_code():
         return redirect(url_for('web.register_page'))
     code = str(random.randint(100000, 999999))
     db.set_verification_code(t_id, code)
-    send_telegram_msg(t_id, f"🔐 *Código de Acesso:*\n\n`{code}`")
+    send_telegram_msg(t_id, f"🔐 *Seu Código Zenith:*\n\n`{code}`")
     return render_template_string(tpl.BASE_LAYOUT.replace('{content_body}', tpl.VERIFY_PAGE), telegram_id=t_id)
 
 @web_bp.route('/verify_setup', methods=['POST'])
 def verify_setup():
     t_id, code, pwd = request.form.get('telegram_id'), request.form.get('code'), request.form.get('password')
     if db.verify_code_and_set_password(t_id, code, pwd):
-        flash("Senha definida com sucesso.")
+        flash("Senha criada. Bem-vindo ao Zenith.")
         return redirect(url_for('web.login'))
     flash("Código incorreto.")
     return redirect(url_for('web.register_page'))
@@ -66,7 +66,7 @@ def verify_setup():
 @login_required
 def dashboard():
     uid = current_user.id
-    accs, recent = db.get_user_accounts(uid), db.get_last_transactions(uid, 5) # Top 5 apenas
+    accs, recent = db.get_user_accounts(uid), db.get_last_transactions(uid, 5)
     total_acc = sum(float(a['balance']) for a in accs)
     try: total_invoice, invoice_details = db.get_invoice_total(uid)
     except: total_invoice, invoice_details = 0.0, []
@@ -75,7 +75,7 @@ def dashboard():
     full_html = tpl.BASE_LAYOUT.replace('{content_body}', tpl.DASHBOARD_PAGE)
     return render_template_string(full_html, user=current_user, accs=accs, total_acc=total_acc, total_invoice=total_invoice, invoice_details=invoice_details, recent=recent, recent_json=recent_json)
 
-# --- ROTAS DE TRANSAÇÕES (CRUD) ---
+# --- CRUD ---
 @web_bp.route('/transactions')
 @login_required
 def list_transactions():
@@ -108,6 +108,7 @@ def edit_transaction(id):
     
     t = db.get_transaction(id, current_user.id)
     if not t: return redirect(url_for('web.list_transactions'))
+    # Garante formato correto da data para o input HTML (YYYY-MM-DDTHH:MM)
     if t.get('transaction_date'): t['transaction_date'] = t['transaction_date'][:16]
     
     accs, cards = db.get_user_accounts(current_user.id), db.get_user_cards(current_user.id)
