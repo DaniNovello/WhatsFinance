@@ -31,7 +31,14 @@ def get_reports_keyboard():
 def get_config_keyboard(): 
     return {'inline_keyboard': [[{'text': '➕ Nova Conta', 'callback_data': 'btn_new_account'}, {'text': '💳 Novo Cartão', 'callback_data': 'btn_new_card'}], [{'text': '🔙 Voltar', 'callback_data': '/menu'}]]}
 
-# Teclado para escolher método de pagamento se a IA não identificar
+# NOVO: Teclado para definir Tipo (Entrada/Saída) após imagem
+def get_type_keyboard():
+    return {'inline_keyboard': [[
+        {'text': '🔴 Gastei (Saída)', 'callback_data': 'set_type_expense'},
+        {'text': '🟢 Ganhei (Entrada)', 'callback_data': 'set_type_income'}
+    ]]}
+
+# Teclado para escolher método de pagamento
 def get_method_keyboard():
     return {'inline_keyboard': [
         [{'text': '💳 Crédito', 'callback_data': 'set_method_credit_card'}, {'text': '🏧 Débito', 'callback_data': 'set_method_debit_card'}], 
@@ -44,8 +51,34 @@ def send_message(chat_id, text, reply_markup=None):
     try: requests.post(f"{TELEGRAM_API_URL}/sendMessage", json=payload)
     except: pass
 
-# --- Função Auxiliar: Fluxo de Perguntas Pós-Registro ---
-def trigger_follow_up_questions(chat_id, transaction_data):
+# --- Funções Auxiliares de Fluxo ---
+
+def trigger_save_and_continue(chat_id, entities):
+    """
+    Função central que salva no banco e decide qual a próxima pergunta (Cartão? Conta?).
+    """
+    # 1. Tenta Salvar
+    inst = entities.get('installments', 1)
+    
+    # Se for parcelado usa uma lógica, se for a vista usa RPC
+    if isinstance(inst, int) and inst > 1:
+        success = db.create_installments(chat_id, entities, inst)
+    else:
+        success = db.process_transaction_with_rpc(chat_id, entities)
+
+    if not success:
+        send_message(chat_id, "❌ Erro ao salvar no banco de dados.")
+        return
+
+    # 2. Inicia as Perguntas de Follow-up (Conta, Cartão, Método)
+    # Limpa buffer pois já salvou
+    if chat_id in user_data_buffer: del user_data_buffer[chat_id]
+    if chat_id in user_states: del user_states[chat_id]
+    
+    # Chama a lógica de perguntas
+    ask_follow_up_questions(chat_id, entities)
+
+def ask_follow_up_questions(chat_id, transaction_data):
     """Verifica se precisa perguntar Conta, Cartão ou Método após salvar"""
     tipo = transaction_data.get('type')
     pay = transaction_data.get('payment_method')
@@ -64,7 +97,7 @@ def trigger_follow_up_questions(chat_id, transaction_data):
             kb = {'inline_keyboard': [[{'text': f"💳 {c['name']}", 'callback_data': f"sel_card_{c['id']}"}] for c in cards]}
             send_message(chat_id, f"💳 Gasto no crédito. Em qual cartão?", reply_markup=kb)
         else:
-            send_message(chat_id, f"⚠️ Gasto no crédito registrado, mas você não tem cartões cadastrados. Use o menu para cadastrar.")
+            send_message(chat_id, f"⚠️ Registrado, mas você não tem cartões cadastrados.")
         return
 
     # Caso 3: Entrada ou Débito/Pix -> Pergunta qual conta
@@ -75,8 +108,7 @@ def trigger_follow_up_questions(chat_id, transaction_data):
             kb = {'inline_keyboard': [[{'text': f"🏦 {a['name']}", 'callback_data': f"sel_acc_{a['id']}"}] for a in accs]}
             send_message(chat_id, f"💰 {action_text} qual conta?", reply_markup=kb)
         else:
-            if tipo == 'income': send_message(chat_id, f"✅ Recebimento registrado! (Cadastre contas para gerenciar saldo)")
-            else: send_message(chat_id, f"✅ Gasto registrado! (Cadastre contas para gerenciar saldo)")
+            send_message(chat_id, f"✅ Registrado! (Cadastre contas para gerenciar saldo)")
         return
 
     # Se nada faltar
@@ -94,13 +126,35 @@ def webhook():
         raw_data = cb['data']
         requests.post(f"{TELEGRAM_API_URL}/answerCallbackQuery", json={'callback_query_id': cb['id']})
 
+        # --- FLUXO: DEFINIÇÃO DE TIPO (ENTRADA/SAÍDA) ---
+        if raw_data.startswith('set_type_'):
+            new_type = 'income' if 'income' in raw_data else 'expense'
+            
+            # Recupera dados do buffer
+            if chat_id in user_data_buffer:
+                user_data_buffer[chat_id]['type'] = new_type
+                entities = user_data_buffer[chat_id]
+                
+                # VERIFICA DESCRIÇÃO ANTES DE SALVAR
+                # Se a IA não pegou o nome, ou pegou algo genérico, pergunta agora
+                desc = entities.get('description')
+                if not desc or desc.lower() == 'none' or desc == 'null':
+                    user_states[chat_id] = 'awaiting_description'
+                    send_message(chat_id, f"ok, é uma {('Entrada' if new_type == 'income' else 'Saída')}.\nMas qual a descrição? (Ex: Mercado, Salário)")
+                else:
+                    # Se já tem descrição, SALVA e segue o fluxo
+                    trigger_save_and_continue(chat_id, entities)
+            else:
+                send_message(chat_id, "⚠️ Sessão expirada. Envie o comprovante novamente.")
+            return "OK", 200
+
         # --- SELEÇÃO DE CONTA ---
-        if raw_data.startswith('sel_acc_'):
+        elif raw_data.startswith('sel_acc_'):
             acc_id = int(raw_data.split('_')[2])
             last = db.get_last_transactions(chat_id, 1)
             if last:
                 db.update_transaction_account(last[0]['id'], acc_id)
-                send_message(chat_id, "✅ Saldo atualizado!")
+                send_message(chat_id, "✅ Conta vinculada e saldo atualizado!")
             return "OK", 200
 
         # --- SELEÇÃO DE CARTÃO ---
@@ -112,18 +166,16 @@ def webhook():
                 send_message(chat_id, "✅ Fatura atualizada!")
             return "OK", 200
 
-        # --- SELEÇÃO DE MÉTODO (Quando a IA não pega) ---
+        # --- SELEÇÃO DE MÉTODO ---
         elif raw_data.startswith('set_method_'):
             method = raw_data.replace('set_method_', '')
             last = db.get_last_transactions(chat_id, 1)
             if last:
-                # Atualiza o método no banco
                 db.update_transaction_method(last[0]['id'], method)
-                # Recarrega os dados para continuar o fluxo (perguntar cartão ou conta)
+                # Recarrega para ver se precisa perguntar cartão/conta
                 trans_data = last[0]
                 trans_data['payment_method'] = method
-                # Chama a lógica novamente para decidir se pergunta cartão ou conta
-                trigger_follow_up_questions(chat_id, trans_data)
+                ask_follow_up_questions(chat_id, trans_data)
             return "OK", 200
 
         # --- NAVEGAÇÃO ---
@@ -158,26 +210,19 @@ def webhook():
             
             if text == '/cancelar':
                 del user_states[chat_id]
+                if chat_id in user_data_buffer: del user_data_buffer[chat_id]
                 send_message(chat_id, "Cancelado.")
                 return "OK", 200
             
             # --- FLUXO: DESCRIÇÃO FALTANTE ---
             if state == 'awaiting_description':
-                # Recupera os dados que estavam na memória
-                entities = user_data_buffer.get(chat_id, {})
-                entities['description'] = text # Preenche com o que o usuário digitou agora
-                
-                # Salva no banco
-                inst = entities.get('installments', 1)
-                success = db.create_installments(chat_id, entities, inst) if isinstance(inst, int) and inst > 1 else db.process_transaction_with_rpc(chat_id, entities)
-                
-                del user_states[chat_id]
-                del user_data_buffer[chat_id]
-                
-                if success:
-                    trigger_follow_up_questions(chat_id, entities)
+                if chat_id in user_data_buffer:
+                    user_data_buffer[chat_id]['description'] = text
+                    # Agora salva
+                    trigger_save_and_continue(chat_id, user_data_buffer[chat_id])
                 else:
-                    send_message(chat_id, "❌ Erro ao salvar.")
+                    send_message(chat_id, "Erro de sessão. Tente novamente.")
+                    del user_states[chat_id]
                 return "OK", 200
 
             # --- FLUXOS DE CADASTRO ---
@@ -202,6 +247,7 @@ def webhook():
                     dat = user_data_buffer[chat_id]
                     db.create_credit_card(chat_id, dat['name'], dat['closing'], int(text))
                     del user_states[chat_id]
+                    if chat_id in user_data_buffer: del user_data_buffer[chat_id]
                     send_message(chat_id, f"✅ Cartão *{dat['name']}* criado!", reply_markup=get_config_keyboard())
             return "OK", 200
 
@@ -214,7 +260,7 @@ def webhook():
             send_message(chat_id, commands.handle_command(text, chat_id))
             return "OK", 200
 
-        # --- IA (Processamento) ---
+        # --- IA (Processamento de Imagem ou Texto) ---
         image_bytes = None
         if 'photo' in msg:
             try:
@@ -222,7 +268,7 @@ def webhook():
                 path = requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getFile?file_id={f_id}").json()['result']['file_path']
                 image_bytes = requests.get(f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{path}").content
                 text = msg.get('caption', '')
-                send_message(chat_id, "🔎 Analisando comprovante...")
+                send_message(chat_id, "🔎 Li o comprovante...")
             except: pass
 
         if text or image_bytes:
@@ -236,22 +282,24 @@ def webhook():
             entities = ai_data.get('entities', {})
 
             if intent == 'register_transaction':
-                # VERIFICAÇÃO DE DESCRIÇÃO (Para não salvar "None")
+                
+                # SE FOR IMAGEM: Interrompe e pergunta o Tipo
+                if image_bytes:
+                    user_data_buffer[chat_id] = entities
+                    # Não define state ainda, o botão define o fluxo
+                    send_message(chat_id, f"🧾 Identifiquei R${entities.get('amount')}.\nIsso é uma Entrada ou Saída?", reply_markup=get_type_keyboard())
+                    return "OK", 200
+
+                # SE FOR TEXTO (ex: "Gastei 50"): Segue fluxo normal
+                # Mas ainda verifica descrição
                 if not entities.get('description'):
                     user_data_buffer[chat_id] = entities
                     user_states[chat_id] = 'awaiting_description'
                     send_message(chat_id, f"💰 Identifiquei R${entities.get('amount')}. Mas com o que foi esse gasto/ganho?")
                     return "OK", 200
 
-                # Se tem descrição, SALVA
-                inst = entities.get('installments', 1)
-                success = db.create_installments(chat_id, entities, inst) if isinstance(inst, int) and inst > 1 else db.process_transaction_with_rpc(chat_id, entities)
-                
-                if success:
-                    # Dispara perguntas de follow-up (Conta, Cartão, Método)
-                    trigger_follow_up_questions(chat_id, entities)
-                else:
-                    send_message(chat_id, "Erro ao salvar no banco.")
+                # Se for texto completo, salva direto
+                trigger_save_and_continue(chat_id, entities)
 
             elif intent == 'query_report':
                 report = commands.handle_command(f"relatorio_{entities.get('time_period', 'this_week')}", chat_id)
