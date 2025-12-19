@@ -13,8 +13,7 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
 def send_telegram_msg(chat_id, text):
-    try:
-        requests.post(f"{TELEGRAM_API_URL}/sendMessage", json={'chat_id': chat_id, 'text': text, 'parse_mode': 'Markdown'})
+    try: requests.post(f"{TELEGRAM_API_URL}/sendMessage", json={'chat_id': chat_id, 'text': text, 'parse_mode': 'Markdown'})
     except: pass
 
 class User(UserMixin):
@@ -46,18 +45,18 @@ def register_page():
 def send_code():
     t_id = request.form.get('telegram_id')
     if not db.get_user(t_id):
-        flash("ID não encontrado. Inicie o bot no Telegram.")
+        flash("ID não encontrado.")
         return redirect(url_for('web.register_page'))
     code = str(random.randint(100000, 999999))
     db.set_verification_code(t_id, code)
-    send_telegram_msg(t_id, f"🔐 *Seu Código Zenith:*\n\n`{code}`")
+    send_telegram_msg(t_id, f"🔐 *Código Zenith:*\n\n`{code}`")
     return render_template_string(tpl.BASE_LAYOUT.replace('{content_body}', tpl.VERIFY_PAGE), telegram_id=t_id)
 
 @web_bp.route('/verify_setup', methods=['POST'])
 def verify_setup():
     t_id, code, pwd = request.form.get('telegram_id'), request.form.get('code'), request.form.get('password')
     if db.verify_code_and_set_password(t_id, code, pwd):
-        flash("Senha criada. Bem-vindo ao Zenith.")
+        flash("Senha criada. Bem-vindo.")
         return redirect(url_for('web.login'))
     flash("Código incorreto.")
     return redirect(url_for('web.register_page'))
@@ -66,35 +65,44 @@ def verify_setup():
 @login_required
 def dashboard():
     uid = current_user.id
-    accs, recent = db.get_user_accounts(uid), db.get_last_transactions(uid, 5)
+    # Busca dados para o modal funcionar no dashboard
+    accs, cards = db.get_user_accounts(uid), db.get_user_cards(uid)
+    recent = db.get_last_transactions(uid, 5)
     total_acc = sum(float(a['balance']) for a in accs)
     try: total_invoice, invoice_details = db.get_invoice_total(uid)
     except: total_invoice, invoice_details = 0.0, []
     
     recent_json = json.dumps([{'type': t['type'], 'amount': float(t['amount'])} for t in recent])
+    now_str = datetime.now().strftime('%Y-%m-%dT%H:%M')
+    
     full_html = tpl.BASE_LAYOUT.replace('{content_body}', tpl.DASHBOARD_PAGE)
-    return render_template_string(full_html, user=current_user, accs=accs, total_acc=total_acc, total_invoice=total_invoice, invoice_details=invoice_details, recent=recent, recent_json=recent_json)
+    # Passamos cards e accounts para o modal
+    return render_template_string(full_html, user=current_user, accs=accs, cards=cards, total_acc=total_acc, total_invoice=total_invoice, invoice_details=invoice_details, recent=recent, recent_json=recent_json, now=now_str)
 
-# --- CRUD ---
 @web_bp.route('/transactions')
 @login_required
 def list_transactions():
-    transactions = db.get_all_transactions(current_user.id)
-    return render_template_string(tpl.BASE_LAYOUT.replace('{content_body}', tpl.TRANSACTIONS_LIST_PAGE), transactions=transactions, user=current_user)
+    uid = current_user.id
+    filter_type = request.args.get('type') # Pega o filtro da URL
+    
+    transactions = db.get_all_transactions(uid, filter_type=filter_type)
+    # Busca contas/cartões para o modal funcionar aqui também
+    accs, cards = db.get_user_accounts(uid), db.get_user_cards(uid)
+    now_str = datetime.now().strftime('%Y-%m-%dT%H:%M')
+    
+    full_html = tpl.BASE_LAYOUT.replace('{content_body}', tpl.TRANSACTIONS_LIST_PAGE)
+    return render_template_string(full_html, transactions=transactions, user=current_user, accounts=accs, cards=cards, now=now_str)
 
-@web_bp.route('/transaction/new', methods=['GET', 'POST'])
+@web_bp.route('/transaction/new', methods=['POST'])
 @login_required
 def new_transaction():
-    if request.method == 'POST':
-        data = {k: request.form.get(k) for k in ['type', 'description', 'amount', 'category', 'payment_method', 'account_id', 'card_id', 'date']}
-        if db.add_transaction_manual(current_user.id, data):
-            flash("Registro adicionado.")
-            return redirect(url_for('web.dashboard'))
+    data = {k: request.form.get(k) for k in ['type', 'description', 'amount', 'category', 'payment_method', 'account_id', 'card_id', 'date']}
+    if db.add_transaction_manual(current_user.id, data):
+        flash("Registro salvo.")
+    else:
         flash("Erro ao salvar.")
-    
-    accs, cards = db.get_user_accounts(current_user.id), db.get_user_cards(current_user.id)
-    now_str = datetime.now().strftime('%Y-%m-%dT%H:%M')
-    return render_template_string(tpl.BASE_LAYOUT.replace('{content_body}', tpl.TRANSACTION_FORM_PAGE), t=None, accounts=accs, cards=cards, now=now_str)
+    # Redireciona para a página de onde veio (referrer) ou dashboard
+    return redirect(request.referrer or url_for('web.dashboard'))
 
 @web_bp.route('/transaction/edit/<id>', methods=['GET', 'POST'])
 @login_required
@@ -102,13 +110,12 @@ def edit_transaction(id):
     if request.method == 'POST':
         data = {k: request.form.get(k) for k in ['type', 'description', 'amount', 'category', 'payment_method', 'account_id', 'card_id', 'date']}
         if db.update_transaction(current_user.id, id, data):
-            flash("Registro atualizado.")
+            flash("Atualizado com sucesso.")
             return redirect(url_for('web.list_transactions'))
         flash("Erro ao atualizar.")
     
     t = db.get_transaction(id, current_user.id)
     if not t: return redirect(url_for('web.list_transactions'))
-    # Garante formato correto da data para o input HTML (YYYY-MM-DDTHH:MM)
     if t.get('transaction_date'): t['transaction_date'] = t['transaction_date'][:16]
     
     accs, cards = db.get_user_accounts(current_user.id), db.get_user_cards(current_user.id)
@@ -117,8 +124,8 @@ def edit_transaction(id):
 @web_bp.route('/transaction/delete/<id>')
 @login_required
 def delete_transaction_route(id):
-    if db.delete_transaction(id, current_user.id): flash("Registro removido.")
-    else: flash("Erro ao remover.")
+    if db.delete_transaction(id, current_user.id): flash("Removido.")
+    else: flash("Erro.")
     return redirect(url_for('web.list_transactions'))
 
 @web_bp.route('/logout')
