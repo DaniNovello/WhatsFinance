@@ -4,25 +4,6 @@ import json
 import logging
 from PIL import Image
 import io
-import time
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-
-generation_config = {
-    "temperature": 0.2,
-    "response_mime_type": "application/json"
-}
-
-import os
-import google.generativeai as genai
-import json
-import logging
-from PIL import Image
-import io
-import time
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -35,21 +16,29 @@ generation_config = {
 }
 
 def get_ai_response(message_text, image_bytes=None):
-    # Prompt ajustado para entender ENTRADAS (income)
+    # Prompt corrigido para retornar a estrutura "intent" e "entities"
     prompt_text = f"""
-    Aja como um assistente financeiro pessoal. Analise a entrada e extraia um JSON.
+    Aja como um assistente financeiro. Sua tarefa é extrair dados da mensagem e retornar um JSON ESTRITAMENTE neste formato:
     
-    1. 'register_transaction':
-       - description: Nome do estabelecimento ou pessoa.
-       - amount: Valor numérico (float). Use ponto para decimais.
-       - type: 'expense' (para gastos/saídas) ou 'income' (para ganhos/entradas/depósitos).
-       - payment_method: 'credit_card', 'debit_card', 'pix', 'money' ou null.
-       - installments: Número de parcelas (int). Padrão 1.
-       - category: Sugira uma categoria (Ex: Alimentação, Transporte, Salário, Renda Extra).
+    {{
+      "intent": "register_transaction" OU "query_report",
+      "entities": {{
+          ...dados extraídos...
+      }}
+    }}
 
-    2. 'query_report':
+    Regras para 'entities':
+    1. Se for transação ('register_transaction'):
+       - description: (str) Nome do estabelecimento ou pessoa.
+       - amount: (float) Valor numérico.
+       - type: 'expense' (gastei, paguei, saída) ou 'income' (ganhei, recebi, entrada).
+       - payment_method: 'credit_card' (crédito), 'debit_card' (débito), 'pix', 'money' (dinheiro) ou null.
+       - installments: (int) Número de parcelas. Padrão 1.
+       - category: (str) Categoria sugerida (Ex: Alimentação, Transporte).
+
+    2. Se for consulta ('query_report'):
        - description: termo de busca ou null.
-       - time_period: today, yesterday, this_week, this_month.
+       - time_period: 'today', 'yesterday', 'this_week', 'this_month'.
 
     Mensagem do usuário: "{message_text}"
     """
@@ -64,15 +53,22 @@ def get_ai_response(message_text, image_bytes=None):
         except Exception as e:
             logger.error(f"Erro ao processar imagem: {e}")
 
-    # ATUALIZADO: Usando o modelo gemini-2.5-flash que substituiu o 1.5
+    # Modelo atualizado e compatível
     model = genai.GenerativeModel("gemini-2.5-flash", generation_config=generation_config)
 
     try:
         response = model.generate_content(content)
-        return json.loads(response.text)
+        parsed = json.loads(response.text)
+        
+        # Garante que chaves mínimas existam para não quebrar o app
+        if "intent" not in parsed:
+            parsed["intent"] = None
+        if "entities" not in parsed:
+            parsed["entities"] = {}
+            
+        return parsed
     except Exception as e:
         logger.error(f"Erro na IA: {e}")
-        # Retorna None para que o bot avise que não entendeu, em vez de quebrar
         return None
 
 def get_financial_advice():
