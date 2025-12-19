@@ -23,7 +23,9 @@ def create_account(user_id, account_name):
     return response.data[0] if response.data else None
 
 def get_user_accounts(user_id):
-    response = supabase.table('accounts').select('id, name').eq('user_id', user_id).execute()
+    # CORREÇÃO: Mudamos de select('id, name') para select('*')
+    # Isso garante que o campo 'balance' venha junto para o Dashboard.
+    response = supabase.table('accounts').select('*').eq('user_id', user_id).execute()
     return response.data if response.data else []
 
 def get_accounts_balance(user_id):
@@ -53,7 +55,7 @@ def get_invoice_total(user_id, card_id=None):
     
     for card in cards:
         c_day = card.get('closing_day', 1)
-        # Lógica simplificada de fechamento
+        # Lógica de datas de fechamento
         if today.day >= c_day:
             start_date = date(today.year, today.month, c_day)
             # Vai até o próximo fechamento
@@ -88,7 +90,6 @@ def process_transaction_with_rpc(user_id, data):
             'p_category': data.get('category'),
             'p_card_id': data.get('card_id')
         }
-        # RPC padrão (insere transação). A atualização de saldo de conta específica é feita depois via update_transaction_account
         supabase.rpc('handle_transaction_and_update_balance', params).execute()
         return True
     except Exception as e:
@@ -130,28 +131,22 @@ def update_transaction_card(transaction_id, card_id):
     except: return False
 
 def update_transaction_account(transaction_id, account_id):
-    """Vincula a transação a uma conta e ATUALIZA O SALDO DA CONTA."""
     try:
-        # 1. Atualiza o ID da conta na transação
         supabase.table('transactions').update({'account_id': account_id}).eq('id', transaction_id).execute()
         
-        # 2. Pega os dados para ajustar o saldo
         trans = supabase.table('transactions').select('amount, type').eq('id', transaction_id).single().execute()
         if trans.data:
             amount = float(trans.data['amount'])
             tipo = trans.data['type']
             
-            # Pega saldo atual
             acc = supabase.table('accounts').select('balance').eq('id', account_id).single().execute()
             current_bal = float(acc.data['balance'])
             
-            # Calcula novo saldo (Se for Income soma, se for Expense subtrai)
             if tipo == 'income': 
                 new_bal = current_bal + amount
             else: 
                 new_bal = current_bal - amount
             
-            # Salva
             supabase.table('accounts').update({'balance': new_bal}).eq('id', account_id).execute()
             return True
     except Exception as e:
@@ -159,7 +154,7 @@ def update_transaction_account(transaction_id, account_id):
         return False
 
 def get_last_transactions(user_id, limit=5):
-    response = supabase.table('transactions').select('id, description, amount, type').eq('user_id', user_id).order('transaction_date', desc=True).limit(limit).execute()
+    response = supabase.table('transactions').select('id, description, amount, type, category, payment_method, transaction_date').eq('user_id', user_id).order('transaction_date', desc=True).limit(limit).execute()
     return response.data if response.data else []
 
 def delete_transaction(transaction_id, user_id):
@@ -197,6 +192,7 @@ def get_detailed_report(user_id, time_period):
     resp = supabase.table('transactions').select('description, amount, transaction_date, category, type').eq('user_id', user_id).gte('transaction_date', start.isoformat()).lte('transaction_date', end.isoformat()).order('transaction_date').execute()
     return resp.data if resp.data else []
 
+# --- AUTH WEB ---
 def set_verification_code(user_id, code):
     try:
         supabase.table('users').update({'verification_code': code}).eq('id', user_id).execute()
@@ -207,18 +203,16 @@ def set_verification_code(user_id, code):
 
 def verify_code_and_set_password(user_id, code, plain_password):
     try:
-        # Busca o usuário e o código
         resp = supabase.table('users').select('verification_code').eq('id', user_id).execute()
         if not resp.data: return False
         
         stored_code = resp.data[0].get('verification_code')
         
         if stored_code == code:
-            # Hash da senha para segurança
             p_hash = generate_password_hash(plain_password)
             supabase.table('users').update({
                 'password_hash': p_hash,
-                'verification_code': None # Limpa o código usado
+                'verification_code': None
             }).eq('id', user_id).execute()
             return True
         return False
