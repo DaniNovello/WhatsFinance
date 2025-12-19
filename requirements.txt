@@ -3,7 +3,9 @@ requests
 supabase
 python-dotenv
 gunicorn
-# Atualizado: removemos a restrição de versão que causava erro
 google-generativeai
 Pillow
 python-dateutil
+flask-login
+werkzeug
+email_validator

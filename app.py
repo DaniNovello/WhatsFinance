@@ -1,15 +1,33 @@
 import os
-import requests
 import logging
 from flask import Flask, request
+from flask_login import LoginManager
 from dotenv import load_dotenv
 
 import db
 import commands
 import ai_parser
 
+# Importa o módulo web que acabamos de criar
+from web_routes import web_bp, User
+
 load_dotenv()
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "chave_secreta_padrao_mude_no_env")
+
+# --- CONFIGURAÇÃO WEB (FLASK-LOGIN) ---
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'web.login'
+
+@login_manager.user_loader
+def load_user(user_id):
+    u = db.get_user(user_id)
+    if u: return User(u['id'], u['name'])
+    return None
+
+# Registra as rotas do site
+app.register_blueprint(web_bp)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)

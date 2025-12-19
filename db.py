@@ -2,6 +2,7 @@ import os
 from datetime import datetime, timedelta, date, time
 from dateutil.relativedelta import relativedelta
 from supabase import create_client, Client
+from werkzeug.security import generate_password_hash, check_password_hash
 
 url: str = os.environ.get("SUPABASE_URL")
 key: str = os.environ.get("SUPABASE_KEY")
@@ -195,3 +196,44 @@ def get_detailed_report(user_id, time_period):
     if not start: return []
     resp = supabase.table('transactions').select('description, amount, transaction_date, category, type').eq('user_id', user_id).gte('transaction_date', start.isoformat()).lte('transaction_date', end.isoformat()).order('transaction_date').execute()
     return resp.data if resp.data else []
+
+def set_verification_code(user_id, code):
+    try:
+        supabase.table('users').update({'verification_code': code}).eq('id', user_id).execute()
+        return True
+    except Exception as e:
+        print(f"Erro ao salvar codigo: {e}")
+        return False
+
+def verify_code_and_set_password(user_id, code, plain_password):
+    try:
+        # Busca o usuário e o código
+        resp = supabase.table('users').select('verification_code').eq('id', user_id).execute()
+        if not resp.data: return False
+        
+        stored_code = resp.data[0].get('verification_code')
+        
+        if stored_code == code:
+            # Hash da senha para segurança
+            p_hash = generate_password_hash(plain_password)
+            supabase.table('users').update({
+                'password_hash': p_hash,
+                'verification_code': None # Limpa o código usado
+            }).eq('id', user_id).execute()
+            return True
+        return False
+    except Exception as e:
+        print(f"Erro ao definir senha: {e}")
+        return False
+
+def check_user_login(user_id, plain_password):
+    try:
+        resp = supabase.table('users').select('password_hash').eq('id', user_id).execute()
+        if not resp.data: return False
+        
+        p_hash = resp.data[0].get('password_hash')
+        if not p_hash: return False
+        
+        return check_password_hash(p_hash, plain_password)
+    except:
+        return False
