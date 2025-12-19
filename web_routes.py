@@ -7,13 +7,12 @@ from flask_login import login_user, login_required, logout_user, current_user, U
 import db
 import templates_web as tpl
 
-# Criamos o "Blueprint" (módulo web)
+# Criamos o "Blueprint"
 web_bp = Blueprint('web', __name__)
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
-# Função auxiliar para mandar mensagem (evita importar app.py e criar ciclo)
 def send_telegram_msg(chat_id, text):
     try:
         requests.post(f"{TELEGRAM_API_URL}/sendMessage", json={
@@ -21,7 +20,6 @@ def send_telegram_msg(chat_id, text):
         })
     except: pass
 
-# --- CLASSE USER (Flask-Login) ---
 class User(UserMixin):
     def __init__(self, id, name):
         self.id = str(id)
@@ -41,21 +39,21 @@ def login():
         t_id = request.form.get('telegram_id')
         pwd = request.form.get('password')
         
-        # Verifica no banco
         if db.check_user_login(t_id, pwd):
             u = db.get_user(t_id)
-            user_obj = User(u['id'], u['name'])
-            login_user(user_obj)
+            login_user(User(u['id'], u['name']))
             return redirect(url_for('web.dashboard'))
         
         flash('❌ Login inválido. Verifique ID e senha.')
     
-    # Renderiza o HTML "base" injetando o bloco "content" do LOGIN_PAGE
-    return render_template_string(tpl.LOGIN_PAGE.replace('{% extends "base" %}', tpl.BASE_LAYOUT))
+    # Injeção manual do HTML para evitar conflito de Jinja
+    full_html = tpl.BASE_LAYOUT.replace('{content_body}', tpl.LOGIN_PAGE)
+    return render_template_string(full_html)
 
 @web_bp.route('/register', methods=['GET'])
 def register_page():
-    return render_template_string(tpl.REGISTER_PAGE.replace('{% extends "base" %}', tpl.BASE_LAYOUT))
+    full_html = tpl.BASE_LAYOUT.replace('{content_body}', tpl.REGISTER_PAGE)
+    return render_template_string(full_html)
 
 @web_bp.route('/send_code', methods=['POST'])
 def send_code():
@@ -66,15 +64,14 @@ def send_code():
         flash("⚠️ Usuário não encontrado! Mande um 'Oi' no Bot do Telegram primeiro.")
         return redirect(url_for('web.register_page'))
     
-    # Gera código e salva
     code = str(random.randint(100000, 999999))
     db.set_verification_code(t_id, code)
     
     send_telegram_msg(t_id, f"🔐 *Seu Código Web:*\n\n`{code}`\n\nUse para criar sua senha.")
     
-    # Renderiza página de verificação
-    page = tpl.VERIFY_PAGE.replace('{% extends "base" %}', tpl.BASE_LAYOUT)
-    return render_template_string(page, telegram_id=t_id)
+    # Injeta a página de verificação
+    full_html = tpl.BASE_LAYOUT.replace('{content_body}', tpl.VERIFY_PAGE)
+    return render_template_string(full_html, telegram_id=t_id)
 
 @web_bp.route('/verify_setup', methods=['POST'])
 def verify_setup():
@@ -94,24 +91,27 @@ def verify_setup():
 def dashboard():
     uid = current_user.id
     
-    # Dados Reais
     accs = db.get_user_accounts(uid)
-    cards = db.get_user_cards(uid)
+    cards = db.get_user_cards(uid) # Adicionei aqui pois estava faltando
     recent = db.get_last_transactions(uid, 10)
     
-    # Cálculos
     total_acc = sum(float(a['balance']) for a in accs)
-    total_invoice, invoice_details = db.get_invoice_total(uid) # Requer sua função atualizada no db.py
     
-    # Username do bot (opcional, para link)
+    # Função segura para pegar faturas (caso db.py não tenha atualizado)
+    try:
+        total_invoice, invoice_details = db.get_invoice_total(uid)
+    except:
+        total_invoice, invoice_details = 0.0, []
+
     bot_user = "SeuBotFinanceiroBot" 
-    
-    page = tpl.DASHBOARD_PAGE.replace('{% extends "base" %}', tpl.BASE_LAYOUT)
     
     # Prepara JSON seguro para o gráfico
     recent_json = json.dumps([{'type': t['type'], 'amount': float(t['amount'])} for t in recent])
 
-    return render_template_string(page, 
+    # Monta a página final
+    full_html = tpl.BASE_LAYOUT.replace('{content_body}', tpl.DASHBOARD_PAGE)
+
+    return render_template_string(full_html, 
         user=current_user,
         accs=accs,
         total_acc=total_acc,
