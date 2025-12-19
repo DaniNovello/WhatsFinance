@@ -23,8 +23,6 @@ def create_account(user_id, account_name):
     return response.data[0] if response.data else None
 
 def get_user_accounts(user_id):
-    # CORREÇÃO: Mudamos de select('id, name') para select('*')
-    # Isso garante que o campo 'balance' venha junto para o Dashboard.
     response = supabase.table('accounts').select('*').eq('user_id', user_id).execute()
     return response.data if response.data else []
 
@@ -55,10 +53,8 @@ def get_invoice_total(user_id, card_id=None):
     
     for card in cards:
         c_day = card.get('closing_day', 1)
-        # Lógica de datas de fechamento
         if today.day >= c_day:
             start_date = date(today.year, today.month, c_day)
-            # Vai até o próximo fechamento
             next_month = today.replace(day=28) + timedelta(days=4)
             end_date = date(next_month.year, next_month.month, c_day) - timedelta(days=1)
         else:
@@ -78,7 +74,7 @@ def get_invoice_total(user_id, card_id=None):
 
     return total_invoice, details
 
-# --- TRANSAÇÕES ---
+# --- TRANSAÇÕES (BOT & WEB) ---
 def process_transaction_with_rpc(user_id, data):
     try:
         params = {
@@ -133,20 +129,13 @@ def update_transaction_card(transaction_id, card_id):
 def update_transaction_account(transaction_id, account_id):
     try:
         supabase.table('transactions').update({'account_id': account_id}).eq('id', transaction_id).execute()
-        
         trans = supabase.table('transactions').select('amount, type').eq('id', transaction_id).single().execute()
         if trans.data:
             amount = float(trans.data['amount'])
             tipo = trans.data['type']
-            
             acc = supabase.table('accounts').select('balance').eq('id', account_id).single().execute()
             current_bal = float(acc.data['balance'])
-            
-            if tipo == 'income': 
-                new_bal = current_bal + amount
-            else: 
-                new_bal = current_bal - amount
-            
+            new_bal = current_bal + amount if tipo == 'income' else current_bal - amount
             supabase.table('accounts').update({'balance': new_bal}).eq('id', account_id).execute()
             return True
     except Exception as e:
@@ -159,75 +148,95 @@ def get_last_transactions(user_id, limit=5):
 
 def delete_transaction(transaction_id, user_id):
     try:
-        supabase.rpc('delete_transaction_and_revert_balance', {'p_transaction_id': transaction_id, 'p_user_id': user_id}).execute()
+        supabase.rpc('delete_transaction_and_revert_balance', {'p_transaction_id': int(transaction_id), 'p_user_id': user_id}).execute()
         return True
-    except: return False
+    except Exception as e:
+        print(f"Erro Delete: {e}")
+        return False
 
-# --- RELATÓRIOS ---
-def get_date_range(time_period):
-    today = date.today()
-    if time_period == 'today': return datetime.combine(today, time.min), datetime.combine(today, time.max)
-    if time_period == 'yesterday':
-        y = today - timedelta(days=1)
-        return datetime.combine(y, time.min), datetime.combine(y, time.max)
-    if time_period == 'this_week':
-        start = today - timedelta(days=today.weekday())
-        return datetime.combine(start, time.min), datetime.combine(today, time.max)
-    if time_period == 'this_month':
-        start = today.replace(day=1)
-        return datetime.combine(start, time.min), datetime.combine(today, time.max)
-    return None, None
+# --- NOVAS FUNÇÕES PARA O DASHBOARD (CRUD) ---
+def get_transaction(transaction_id, user_id):
+    resp = supabase.table('transactions').select('*').eq('id', transaction_id).eq('user_id', user_id).single().execute()
+    return resp.data if resp.data else None
 
-def get_report(user_id, description, time_period):
-    start, end = get_date_range(time_period)
-    if not start: return 0
-    query = supabase.table('transactions').select('amount').eq('user_id', user_id).eq('type', 'expense').gte('transaction_date', start.isoformat()).lte('transaction_date', end.isoformat())
-    if description: query = query.ilike('description', f'%{description}%')
-    resp = query.execute()
-    return sum(float(i['amount']) for i in resp.data) if resp.data else 0
-
-def get_detailed_report(user_id, time_period):
-    start, end = get_date_range(time_period)
-    if not start: return []
-    resp = supabase.table('transactions').select('description, amount, transaction_date, category, type').eq('user_id', user_id).gte('transaction_date', start.isoformat()).lte('transaction_date', end.isoformat()).order('transaction_date').execute()
+def get_all_transactions(user_id, limit=100):
+    resp = supabase.table('transactions').select('*').eq('user_id', user_id).order('transaction_date', desc=True).limit(limit).execute()
     return resp.data if resp.data else []
+
+def update_transaction(user_id, t_id, data):
+    try:
+        acc_id = int(data['account_id']) if data.get('account_id') else None
+        card_id = int(data['card_id']) if data.get('card_id') else None
+        
+        params = {
+            'p_transaction_id': int(t_id),
+            'p_user_id': user_id,
+            'p_description': data['description'],
+            'p_amount': float(data['amount']),
+            'p_type': data['type'],
+            'p_payment_method': data['payment_method'],
+            'p_category': data.get('category'),
+            'p_account_id': acc_id,
+            'p_card_id': card_id,
+            'p_date': data.get('date')
+        }
+        supabase.rpc('update_transaction_and_balance', params).execute()
+        return True
+    except Exception as e:
+        print(f"Erro Update: {e}")
+        return False
+
+def add_transaction_manual(user_id, data):
+    try:
+        acc_id = int(data['account_id']) if data.get('account_id') else None
+        card_id = int(data['card_id']) if data.get('card_id') else None
+        
+        payload = {
+            "user_id": user_id,
+            "description": data['description'],
+            "amount": float(data['amount']),
+            "type": data['type'],
+            "payment_method": data['payment_method'],
+            "category": data.get('category'),
+            "card_id": card_id,
+            "account_id": acc_id,
+            "transaction_date": data.get('date') or datetime.now().isoformat()
+        }
+        t = supabase.table('transactions').insert(payload).execute()
+        
+        # Atualiza saldo manualmente se tiver conta (já que insert direto não atualiza)
+        if t.data and acc_id:
+            acc = supabase.table('accounts').select('balance').eq('id', acc_id).single().execute()
+            bal = float(acc.data['balance'])
+            new_bal = bal + float(data['amount']) if data['type'] == 'income' else bal - float(data['amount'])
+            supabase.table('accounts').update({'balance': new_bal}).eq('id', acc_id).execute()
+            
+        return True
+    except Exception as e:
+        print(f"Erro Add Manual: {e}")
+        return False
 
 # --- AUTH WEB ---
 def set_verification_code(user_id, code):
     try:
         supabase.table('users').update({'verification_code': code}).eq('id', user_id).execute()
         return True
-    except Exception as e:
-        print(f"Erro ao salvar codigo: {e}")
-        return False
+    except: return False
 
 def verify_code_and_set_password(user_id, code, plain_password):
     try:
         resp = supabase.table('users').select('verification_code').eq('id', user_id).execute()
         if not resp.data: return False
-        
-        stored_code = resp.data[0].get('verification_code')
-        
-        if stored_code == code:
+        if resp.data[0].get('verification_code') == code:
             p_hash = generate_password_hash(plain_password)
-            supabase.table('users').update({
-                'password_hash': p_hash,
-                'verification_code': None
-            }).eq('id', user_id).execute()
+            supabase.table('users').update({'password_hash': p_hash, 'verification_code': None}).eq('id', user_id).execute()
             return True
         return False
-    except Exception as e:
-        print(f"Erro ao definir senha: {e}")
-        return False
+    except: return False
 
 def check_user_login(user_id, plain_password):
     try:
         resp = supabase.table('users').select('password_hash').eq('id', user_id).execute()
-        if not resp.data: return False
-        
-        p_hash = resp.data[0].get('password_hash')
-        if not p_hash: return False
-        
-        return check_password_hash(p_hash, plain_password)
-    except:
-        return False
+        if not resp.data or not resp.data[0].get('password_hash'): return False
+        return check_password_hash(resp.data[0]['password_hash'], plain_password)
+    except: return False
