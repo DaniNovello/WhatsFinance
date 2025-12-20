@@ -83,15 +83,31 @@ def dashboard():
 @login_required
 def list_transactions():
     uid = current_user.id
-    filter_type = request.args.get('type') # Pega o filtro da URL
     
-    transactions = db.get_all_transactions(uid, filter_type=filter_type)
-    # Busca contas/cartões para o modal funcionar aqui também
+    # Captura filtros da URL
+    filters = {
+        'type': request.args.get('type'),
+        'search': request.args.get('search'),
+        'start_date': request.args.get('start_date'),
+        'end_date': request.args.get('end_date')
+    }
+    
+    # Passa filtros para o DB
+    transactions = db.get_all_transactions(uid, limit=200, filters=filters)
+    
     accs, cards = db.get_user_accounts(uid), db.get_user_cards(uid)
     now_str = datetime.now().strftime('%Y-%m-%dT%H:%M')
     
     full_html = tpl.BASE_LAYOUT.replace('{content_body}', tpl.TRANSACTIONS_LIST_PAGE)
-    return render_template_string(full_html, transactions=transactions, user=current_user, accounts=accs, cards=cards, now=now_str)
+    
+    # Renderiza passando os filtros atuais para preencher o formulário (UX)
+    return render_template_string(full_html, 
+                                  transactions=transactions, 
+                                  user=current_user, 
+                                  accounts=accs, 
+                                  cards=cards, 
+                                  now=now_str,
+                                  filters=filters) # Passa filters para o template
 
 @web_bp.route('/transaction/new', methods=['POST'])
 @login_required

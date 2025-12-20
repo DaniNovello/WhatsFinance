@@ -151,12 +151,39 @@ def get_transaction(transaction_id, user_id):
     resp = supabase.table('transactions').select('*').eq('id', transaction_id).eq('user_id', user_id).single().execute()
     return resp.data if resp.data else None
 
-def get_all_transactions(user_id, limit=100, filter_type=None):
-    query = supabase.table('transactions').select('*').eq('user_id', user_id).order('transaction_date', desc=True).limit(limit)
-    if filter_type and filter_type in ['income', 'expense']:
-        query = query.eq('type', filter_type)
-    resp = query.execute()
-    return resp.data if resp.data else []
+def get_all_transactions(user_id, limit=100, filters=None):
+    # filters é um dicionário: {'type': '...', 'search': '...', 'start_date': '...', 'end_date': '...'}
+    query = supabase.table('transactions').select('*').eq('user_id', user_id).order('transaction_date', desc=True)
+    
+    if filters:
+        # Filtro por Tipo (Entrada/Saída)
+        if filters.get('type') and filters['type'] in ['income', 'expense']:
+            query = query.eq('type', filters['type'])
+        
+        # Filtro por Texto (Descrição ou Categoria)
+        if filters.get('search'):
+            # Busca aproximada (ilike)
+            term = f"%{filters['search']}%"
+            # Nota: Supabase as vezes requer sintaxe específica para OR, 
+            # vamos simplificar filtrando Description. Para OR complexo precisaria de .or_()
+            query = query.ilike('description', term) 
+
+        # Filtro de Data (Início e Fim)
+        if filters.get('start_date'):
+            query = query.gte('transaction_date', f"{filters['start_date']}T00:00:00")
+        
+        if filters.get('end_date'):
+            query = query.lte('transaction_date', f"{filters['end_date']}T23:59:59")
+
+    # Limite final
+    query = query.limit(limit)
+    
+    try:
+        resp = query.execute()
+        return resp.data if resp.data else []
+    except Exception as e:
+        print(f"Erro filtro: {e}")
+        return []
 
 def update_transaction(user_id, t_id, data):
     try:
