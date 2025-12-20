@@ -3,6 +3,7 @@ import logging
 from flask import Flask, request
 from flask_login import LoginManager
 from dotenv import load_dotenv
+import requests
 
 import db
 import commands
