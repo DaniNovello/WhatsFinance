@@ -16,37 +16,45 @@ generation_config = {
 }
 
 def get_ai_response(message_text, image_bytes=None):
-    # Prompt ajustado para extrair ORIGEM e DESTINO separadamente
+    # Prompt ajustado para permitir SAUDAÇÃO e AJUDA
     prompt_text = f"""
-    Aja como um especialista em leitura de comprovantes bancários (Pix, Extratos).
-    Extraia os dados e retorne um JSON neste formato exato:
+    Aja como um assistente financeiro inteligente (Zenith).
+    Analise a mensagem ou imagem e retorne um JSON.
     
+    FORMATO DE RESPOSTA (Escolha um INTENT):
+    
+    1. Se for gasto ou ganho:
     {{
       "intent": "register_transaction",
       "entities": {{
-          "payer_name": "Nome de QUEM PAGOU (Origem/De)",
-          "payee_name": "Nome de QUEM RECEBEU (Destino/Para)",
+          "payer_name": "Quem pagou",
+          "payee_name": "Quem recebeu",
           "amount": 0.00,
-          "type": "expense" ou "income",
-          "payment_method": "credit_card", "debit_card", "pix" ou "money",
-          "category": "Motivo (ex: computador, jantar)"
+          "type": "expense" (ou "income"),
+          "payment_method": "credit_card" (ou "debit_card", "pix", "money"),
+          "category": "categoria do gasto"
       }}
     }}
-
-    REGRAS DE EXTRAÇÃO:
-    1. **Nomes (payer/payee)**:
-       - 'payer_name': Procure por "De", "Pagador", "Origem".
-       - 'payee_name': Procure por "Para", "Destinatário", "Destino".
-       - Se só houver o nome da loja, coloque em 'payee_name' (assuma que é o destino).
-       - IGNORE descrições como "pagamento", "envio", "computador".
-
-    2. **Categoria**:
-       - Use a descrição do motivo (ex: "computador") para o campo 'category'.
     
-    3. **Método**:
-       - Se tiver logo Pix ou "Transferência", use 'pix'.
+    2. Se for pedido de relatório (ex: "quanto gastei essa semana"):
+    {{
+      "intent": "query_report",
+      "entities": {{ "time_period": "this_week" (ou "last_week", "this_month") }}
+    }}
 
-    Mensagem/Imagem: "{message_text}"
+    3. Se for cumprimento, "oi", "olá" ou pedido de ajuda:
+    {{
+      "intent": "greeting",
+      "entities": {{}}
+    }}
+    
+    4. Se não entender nada:
+    {{
+      "intent": "unknown",
+      "entities": {{}}
+    }}
+
+    Mensagem do usuário: "{message_text}"
     """
     
     content = [prompt_text]
@@ -55,7 +63,6 @@ def get_ai_response(message_text, image_bytes=None):
         try:
             image = Image.open(io.BytesIO(image_bytes))
             content.append(image)
-            logger.info("📸 Imagem anexada")
         except Exception as e:
             logger.error(f"Erro imagem: {e}")
 
@@ -66,19 +73,19 @@ def get_ai_response(message_text, image_bytes=None):
         parsed = json.loads(response.text)
         
         # Garante estrutura mínima
-        if "intent" not in parsed: parsed["intent"] = "register_transaction"
+        if "intent" not in parsed: parsed["intent"] = "unknown"
         if "entities" not in parsed: parsed["entities"] = {}
         
-        # Fallback para descrição padrão se a IA falhar em separar
-        ents = parsed["entities"]
-        if not ents.get("description"):
-            # Cria um default temporário, mas o app.py vai decidir o final
-            ents["description"] = ents.get("payee_name") or ents.get("payer_name")
+        # Fallback de descrição para transações
+        if parsed["intent"] == "register_transaction":
+            ents = parsed["entities"]
+            if not ents.get("description"):
+                ents["description"] = ents.get("payee_name") or ents.get("payer_name") or "Despesa"
             
         return parsed
     except Exception as e:
         logger.error(f"Erro na IA: {e}")
-        return None
+        return {"intent": "unknown", "entities": {}} # Retorna fallback seguro
 
 def get_financial_advice():
-    return "💡 Dica: Mantenha suas contas em dia!"
+    return "💡 Dica Zenith: Revise suas faturas semanalmente para evitar surpresas!"
