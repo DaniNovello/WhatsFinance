@@ -66,9 +66,7 @@ def send_message(chat_id, text, reply_markup=None):
     if reply_markup: payload['reply_markup'] = reply_markup
     try: 
         r = requests.post(f"{TELEGRAM_API_URL}/sendMessage", json=payload)
-        # Log para debug se falhar
-        if r.status_code != 200:
-            logger.error(f"Erro Telegram: {r.text}")
+        if r.status_code != 200: logger.error(f"Erro Telegram: {r.text}")
     except Exception as e: 
         logger.error(f"Erro request: {e}")
 
@@ -138,7 +136,6 @@ def webhook():
                 ents = user_data_buffer[chat_id]
                 ents['type'] = new_type
                 
-                # Ajuste de descrição baseado no tipo
                 payer = ents.get('payer_name')
                 payee = ents.get('payee_name')
                 final_desc = payee if new_type == 'expense' and payee else payer
@@ -215,7 +212,8 @@ def webhook():
                 if chat_id in user_data_buffer: del user_data_buffer[chat_id]
                 send_message(chat_id, "Cancelado.")
                 return "OK", 200
-
+            
+            # ... (Lógica de estados mantida igual) ...
             if state == 'awaiting_description':
                 if chat_id in user_data_buffer:
                     user_data_buffer[chat_id]['description'] = text
@@ -234,31 +232,27 @@ def webhook():
                 user_states[chat_id] = 'awaiting_card_closing'
                 send_message(chat_id, "📅 Fecha dia? (Digite apenas o número)")
                 return "OK", 200
-            
             elif state == 'awaiting_card_closing':
                 if text.isdigit():
                     user_data_buffer[chat_id]['closing'] = int(text)
                     user_states[chat_id] = 'awaiting_card_due'
                     send_message(chat_id, "📅 Vence dia? (Digite apenas o número)")
-                else:
-                    send_message(chat_id, "⚠️ Digite um número válido.")
+                else: send_message(chat_id, "⚠️ Digite um número válido.")
                 return "OK", 200
-            
             elif state == 'awaiting_card_due':
                 if text.isdigit():
                     d = user_data_buffer[chat_id]
                     db.create_credit_card(chat_id, d['name'], d['closing'], int(text))
                     del user_states[chat_id]
                     send_message(chat_id, "✅ Cartão criado!", reply_markup=get_config_keyboard())
-                else:
-                    send_message(chat_id, "⚠️ Digite um número válido.")
+                else: send_message(chat_id, "⚠️ Digite um número válido.")
                 return "OK", 200
 
-        # 2. Checa Comandos de Menu (Iniciados por /)
-        if text.startswith('/'): 
-            send_message(chat_id, commands.handle_command(text, chat_id))
+        # 2. Checagem Especial para /menu digitado manualmente
+        if text.strip() == '/menu':
+            send_message(chat_id, "🤖 *Menu Principal*", reply_markup=get_main_menu_keyboard())
             return "OK", 200
-        
+
         # 3. Processamento de IA (Texto Livre ou Imagem)
         image_bytes = None
         if 'photo' in msg:
@@ -266,31 +260,22 @@ def webhook():
                 f_id = msg['photo'][-1]['file_id']
                 path = requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getFile?file_id={f_id}").json()['result']['file_path']
                 image_bytes = requests.get(f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{path}").content
-                text = msg.get('caption', '') # Pega a legenda da foto se houver
+                text = msg.get('caption', '')
                 send_message(chat_id, "🔎 Analisando comprovante...")
-            except Exception as e:
-                logger.error(f"Erro download img: {e}")
+            except Exception as e: logger.error(f"Erro download img: {e}")
 
-        # Se tiver Texto ou Imagem, chama a IA
         if text or image_bytes:
             ai_data = ai_parser.get_ai_response(text, image_bytes)
             
-            # Se a IA retornou erro ou None
-            if not ai_data:
-                send_message(chat_id, "Não entendi o que você disse. Tente usar o menu ou escrever de forma mais clara.")
-                return "OK", 200
-
-            intent = ai_data.get('intent')
+            intent = ai_data.get('intent') if ai_data else 'unknown'
             entities = ai_data.get('entities', {})
 
-            # --- ROTEAMENTO DE INTENÇÕES ---
             if intent == 'register_transaction':
                 if image_bytes:
                     user_data_buffer[chat_id] = entities
                     send_message(chat_id, f"🧾 Li um valor de R${entities.get('amount')}.\nIsso é Entrada ou Saída?", reply_markup=get_type_keyboard())
                     return "OK", 200
 
-                # Texto puro sem descrição clara
                 if not entities.get('description'):
                     user_data_buffer[chat_id] = entities
                     user_states[chat_id] = 'awaiting_description'
@@ -303,12 +288,12 @@ def webhook():
                 report = commands.handle_command(f"relatorio_{entities.get('time_period', 'this_week')}", chat_id)
                 send_message(chat_id, report)
             
-            elif intent == 'greeting':
-                 send_message(chat_id, commands.handle_command('start', chat_id))
-            
             else:
-                # Intent 'unknown' ou qualquer outra coisa que a IA inventar
-                send_message(chat_id, "Desculpe, não entendi. Use /menu para ver as opções ou digite um gasto (ex: 'Almoço 30 reais').")
+                # AQUI ESTÁ A CORREÇÃO:
+                # Se for "greeting", "unknown" ou qualquer outra coisa que não seja transação/relatório:
+                # Envia o MENU diretamente.
+                greeting = "Olá! 👋" if intent == 'greeting' else "Não entendi como registro, mas aqui está seu menu:"
+                send_message(chat_id, f"{greeting}\nO que deseja fazer?", reply_markup=get_main_menu_keyboard())
 
     return "OK", 200
 
