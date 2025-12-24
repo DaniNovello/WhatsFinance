@@ -1,7 +1,7 @@
 # Logo SVG Zenith
 LOGO_SVG = """<svg class="w-8 h-8 text-blue-500" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 3L19 9M19 9L13 15M19 9H5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 15L11 21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>"""
 
-# Script Universal para Modais (Essencial para os botões funcionarem)
+# Script Universal para Modais
 MODAL_SCRIPT = """
 <script>
     function toggleModal(modalId, show) {
@@ -12,7 +12,6 @@ MODAL_SCRIPT = """
         
         if (show) {
             modal.classList.remove('hidden');
-            // Pequeno delay para permitir a transição CSS
             setTimeout(() => {
                 backdrop.classList.remove('opacity-0');
                 panel.classList.remove('opacity-0', 'translate-y-4', 'sm:translate-y-0', 'sm:scale-95');
@@ -132,6 +131,10 @@ BASE_LAYOUT = """
         .input-dark:focus { border-color: #3B82F6; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); outline: none; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Classe para ocultar saldo */
+        .privacy-mask { filter: blur(6px); user-select: none; transition: filter 0.3s; }
+        .privacy-active .privacy-mask { filter: blur(0px); }
     </style>
 </head>
 <body class="antialiased min-h-screen flex flex-col bg-[#0B0F19]">
@@ -232,26 +235,42 @@ NAVBAR = f"""
 """
 
 DASHBOARD_PAGE = NAVBAR + """
-<main class="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+<main id="mainDashboard" class="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div class="glass p-5 rounded-xl border border-slate-800">
-            <p class="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Saldo Total</p>
-            <h3 class="text-2xl font-bold text-white mb-3 font-mono">R$ {{ "%.2f"|format(total_acc) }}</h3>
+        <div class="glass p-5 rounded-xl border border-slate-800 relative">
+            <div class="flex justify-between items-start mb-1">
+                <p class="text-slate-500 text-xs font-semibold uppercase tracking-wider">Saldo Total</p>
+                <button onclick="togglePrivacy()" id="eyeBtn" class="text-slate-400 hover:text-white transition">
+                    <svg id="eyeOpen" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                    <svg id="eyeClosed" class="w-4 h-4 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path></svg>
+                </button>
+            </div>
+            
+            <h3 class="text-2xl font-bold text-white mb-3 font-mono">R$ <span class="sensitive-val privacy-mask">{{ "%.2f"|format(total_acc) }}</span></h3>
+            
             <div class="flex flex-col gap-1 max-h-24 overflow-y-auto no-scrollbar">
                 {% for acc in accs %}
-                <div class="flex justify-between text-xs text-slate-400 border-b border-dashed border-slate-800 pb-1 last:border-0"><span>{{ acc.name }}</span><span class="text-white font-mono">R$ {{ acc.balance }}</span></div>
+                <div class="flex justify-between text-xs text-slate-400 border-b border-dashed border-slate-800 pb-1 last:border-0">
+                    <span>{{ acc.name }}</span>
+                    <span class="text-white font-mono">R$ <span class="sensitive-val privacy-mask">{{ acc.balance }}</span></span>
+                </div>
                 {% endfor %}
             </div>
         </div>
+        
         <div class="glass p-5 rounded-xl border border-slate-800">
             <p class="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Faturas</p>
-            <h3 class="text-2xl font-bold text-white mb-3 font-mono">R$ {{ "%.2f"|format(total_invoice) }}</h3>
+            <h3 class="text-2xl font-bold text-white mb-3 font-mono">R$ <span class="sensitive-val privacy-mask">{{ "%.2f"|format(total_invoice) }}</span></h3>
             <div class="flex flex-col gap-1 max-h-24 overflow-y-auto no-scrollbar">
                 {% for inv in invoice_details %}
-                <div class="flex justify-between text-xs text-slate-400 border-b border-dashed border-slate-800 pb-1 last:border-0"><span>{{ inv.card }}</span><span class="text-white font-mono">Vence {{ inv.due_day }}</span></div>
+                <div class="flex justify-between text-xs text-slate-400 border-b border-dashed border-slate-800 pb-1 last:border-0">
+                    <span>{{ inv.card }}</span>
+                    <span class="text-white font-mono">Vence {{ inv.due_day }}</span>
+                </div>
                 {% endfor %}
             </div>
         </div>
+        
         <div onclick="toggleModal('addModal', true)" class="glass p-5 rounded-xl border border-dashed border-slate-700 hover:bg-blue-500/5 transition flex items-center justify-center gap-3 group cursor-pointer h-full">
             <div class="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white shadow-lg group-hover:scale-110 transition">＋</div>
             <div class="text-left"><h3 class="font-semibold text-white text-sm">Novo Lançamento</h3><p class="text-slate-500 text-xs">Adicionar manual</p></div>
@@ -272,7 +291,7 @@ DASHBOARD_PAGE = NAVBAR + """
                             <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold {{ 'bg-red-500/10 text-red-500' if t.type == 'expense' else 'bg-green-500/10 text-green-500' }}">{{ '↓' if t.type == 'expense' else '↑' }}</div>
                             <div><p class="text-white text-sm font-medium">{{ t.description }}</p><p class="text-[10px] text-slate-500 uppercase">{{ t.category }}</p></div>
                         </div>
-                        <span class="font-mono text-sm font-medium {{ 'text-red-400' if t.type == 'expense' else 'text-green-400' }}">{{ '-' if t.type == 'expense' else '+' }}{{ "%.2f"|format(t.amount) }}</span>
+                        <span class="font-mono text-sm font-medium sensitive-val privacy-mask {{ 'text-red-400' if t.type == 'expense' else 'text-green-400' }}">{{ '-' if t.type == 'expense' else '+' }}{{ "%.2f"|format(t.amount) }}</span>
                     </div>
                     {% endfor %}
                 </div>
@@ -295,10 +314,46 @@ DASHBOARD_PAGE = NAVBAR + """
         data: { labels: ['Entradas', 'Saídas'], datasets: [{ data: [incomes, expenses], backgroundColor: ['#10B981', '#EF4444'], borderWidth: 0 }] },
         options: { responsive: true, maintainAspectRatio: false, cutout: '85%', plugins: { legend: { display: false } } }
     });
+
+    // Função para alternar privacidade (Olho)
+    function togglePrivacy() {
+        const container = document.getElementById('mainDashboard');
+        const eyeOpen = document.getElementById('eyeOpen');
+        const eyeClosed = document.getElementById('eyeClosed');
+        
+        // Se a classe privacy-active EXISTE, estamos vendo os dados (Unblur).
+        // Se NÃO EXISTE (padrão no CSS), está borrado.
+        
+        const isCurrentlyVisible = container.classList.contains('privacy-active');
+        
+        if (isCurrentlyVisible) {
+            // Vamos ocultar (Borrar)
+            container.classList.remove('privacy-active');
+            eyeOpen.classList.remove('hidden');
+            eyeClosed.classList.add('hidden');
+            localStorage.setItem('zenith_privacy', 'hidden');
+        } else {
+            // Vamos mostrar
+            container.classList.add('privacy-active');
+            eyeOpen.classList.add('hidden');
+            eyeClosed.classList.remove('hidden');
+            localStorage.setItem('zenith_privacy', 'visible');
+        }
+    }
+
+    // Carregar estado ao iniciar
+    document.addEventListener('DOMContentLoaded', () => {
+        const savedState = localStorage.getItem('zenith_privacy');
+        // Se não houver salvo ou for 'hidden', mantém borrado (padrão CSS). 
+        // Se for 'visible', removemos o blur.
+        if (savedState === 'visible') {
+            togglePrivacy(); // Executa uma vez para inverter o estado inicial
+        }
+    });
 </script>
 """
 
-# Extrato (Listagem) com Botão de Filtro e Modal Injetado
+# Restante do arquivo (TRANSACTIONS_LIST_PAGE, TRANSACTION_FORM_PAGE) permanece igual...
 TRANSACTIONS_LIST_PAGE = NAVBAR + """
 <main class="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <div class="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
