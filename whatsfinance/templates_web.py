@@ -41,6 +41,7 @@ ADD_MODAL = """
                     <button type="button" onclick="toggleModal('addModal', false)" class="text-slate-400 hover:text-white transition bg-slate-800/50 p-1 rounded-full hover:bg-slate-700">✕</button>
                 </div>
                 <form action="/transaction/new" method="POST" class="p-6 space-y-5">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="grid grid-cols-2 gap-2 p-1 bg-slate-900/80 rounded-lg border border-slate-800">
                         <label class="cursor-pointer"><input type="radio" name="type" value="expense" checked class="peer sr-only"><div class="text-center py-2.5 rounded-md text-slate-500 text-xs font-bold uppercase tracking-wider peer-checked:bg-red-500/10 peer-checked:text-red-400 peer-checked:shadow-[inset_0_0_10px_rgba(239,68,68,0.1)] transition">Saída</div></label>
                         <label class="cursor-pointer"><input type="radio" name="type" value="income" class="peer sr-only"><div class="text-center py-2.5 rounded-md text-slate-500 text-xs font-bold uppercase tracking-wider peer-checked:bg-green-500/10 peer-checked:text-green-400 peer-checked:shadow-[inset_0_0_10px_rgba(16,185,129,0.1)] transition">Entrada</div></label>
@@ -194,6 +195,7 @@ LOGIN_PAGE = f"""
         
         <div class="glass p-8 rounded-2xl">
             <form method="POST" class="space-y-6">
+                <input type="hidden" name="csrf_token" value="{{{{ csrf_token() }}}}">
                 <div class="space-y-1.5">
                     <label class="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">ID de Acesso</label>
                     <input type="text" name="telegram_id" class="w-full input-dark rounded-xl px-4 py-3.5 text-sm" placeholder="Seu Telegram ID">
@@ -223,6 +225,7 @@ REGISTER_PAGE = """
             <button onclick="history.back()" class="absolute top-6 left-6 text-slate-500 hover:text-white transition text-xs">← Voltar</button>
             <div class="text-center mt-6 mb-8"><h2 class="text-xl font-bold text-white">Novo Acesso Zenith</h2><p class="text-slate-500 text-sm mt-2">Validação via Telegram</p></div>
             <form method="POST" action="/send_code" class="space-y-4">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="text" name="telegram_id" placeholder="Seu Telegram ID" class="w-full input-dark rounded-xl px-4 py-3.5 text-center text-lg focus:border-blue-500 transition">
                 <button class="w-full bg-slate-800 hover:bg-slate-700 text-white font-medium py-3.5 rounded-xl border border-slate-700 transition text-sm">Enviar Código</button>
             </form>
@@ -238,6 +241,7 @@ VERIFY_PAGE = """
             <h2 class="text-xl font-bold text-white text-center mb-1">Definir Senha</h2>
             <p class="text-slate-500 text-xs text-center mb-8">Código enviado ao chat</p>
             <form method="POST" action="/verify_setup" class="space-y-5">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="telegram_id" value="{{ telegram_id }}">
                 <input type="text" name="code" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-4 text-center text-2xl font-mono tracking-[0.5em] text-white outline-none focus:border-green-500 transition" maxlength="6" autofocus placeholder="000000">
                 <div><label class="text-xs font-medium text-slate-400 uppercase tracking-wide">Nova Senha</label><input type="password" name="password" class="w-full mt-1 input-dark rounded-xl px-4 py-3.5 text-sm" required></div>
@@ -255,7 +259,7 @@ NAVBAR = f"""
             <div class="flex items-center gap-3">{LOGO_SVG}<span class="font-bold text-white tracking-tight text-lg">Zenith</span></div>
             <div class="flex items-center gap-4">
                 <span class="text-xs font-medium text-slate-400 hidden sm:block bg-slate-900/50 px-3 py-1 rounded-full border border-slate-800">{{{{ user.name }}}}</span>
-                <a href="/logout" class="text-xs bg-slate-900 text-slate-300 px-3 py-1.5 rounded-lg hover:bg-red-500/10 hover:text-red-400 transition border border-slate-800 font-medium">Sair</a>
+                <form method="POST" action="/logout" class="inline"> <input type="hidden" name="csrf_token" value="{{{{ csrf_token() }}}}"> <button type="submit" class="text-xs bg-slate-900 text-slate-300 px-3 py-1.5 rounded-lg hover:bg-red-500/10 hover:text-red-400 transition border border-slate-800 font-medium cursor-pointer">Sair</button></form>
             </div>
         </div>
     </div>
@@ -440,7 +444,7 @@ TRANSACTIONS_LIST_PAGE = NAVBAR + """
                     </div>
                     <div class="flex gap-3 opacity-80">
                         <a href="/transaction/edit/{{ t.id }}" class="text-blue-400 text-[10px] font-bold uppercase tracking-wider">Editar</a>
-                        <a href="/transaction/delete/{{ t.id }}" onclick="return confirm('Excluir?')" class="text-red-400 text-[10px] font-bold uppercase tracking-wider">Excluir</a>
+                        <form method="POST" action="/transaction/delete/{{ t.id }}" class="inline" onsubmit="return confirm('Excluir?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="text-red-400 text-[10px] font-bold uppercase tracking-wider bg-transparent border-0 p-0 cursor-pointer">Excluir</button></form>
                     </div>
                 </div>
             </div>
@@ -459,7 +463,7 @@ TRANSACTIONS_LIST_PAGE = NAVBAR + """
                         <td class="px-6 py-4"><p class="text-white font-medium">{{ t.description }}</p><span class="text-xs text-slate-500">{{ t.category or 'Geral' }}</span></td>
                         <td class="px-6 py-4"><span class="px-2 py-1 rounded text-xs bg-slate-800 border border-slate-700 uppercase font-medium">{{ t.payment_method }}</span></td>
                         <td class="px-6 py-4 whitespace-nowrap font-mono font-bold {{ 'text-red-400' if t.type == 'expense' else 'text-green-400' }}">{{ '-' if t.type == 'expense' else '+' }}R$ {{ "%.2f"|format(t.amount) }}</td>
-                        <td class="px-6 py-4 text-right"><div class="flex justify-end gap-3 opacity-0 group-hover:opacity-100 transition"><a href="/transaction/edit/{{ t.id }}" class="text-blue-400 text-xs font-bold border border-blue-500/20 px-2 py-1 rounded hover:bg-blue-500/10">EDITAR</a><a href="/transaction/delete/{{ t.id }}" class="text-red-400 text-xs font-bold border border-red-500/20 px-2 py-1 rounded hover:bg-red-500/10">EXCLUIR</a></div></td>
+                        <td class="px-6 py-4 text-right"><div class="flex justify-end gap-3 opacity-0 group-hover:opacity-100 transition"><a href="/transaction/edit/{{ t.id }}" class="text-blue-400 text-xs font-bold border border-blue-500/20 px-2 py-1 rounded hover:bg-blue-500/10">EDITAR</a><form method="POST" action="/transaction/delete/{{ t.id }}" class="inline" onsubmit="return confirm('Excluir?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="text-red-400 text-xs font-bold border border-red-500/20 px-2 py-1 rounded hover:bg-red-500/10 bg-transparent cursor-pointer">EXCLUIR</button></form></div></td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -485,6 +489,7 @@ TRANSACTION_FORM_PAGE = """
         <button onclick="history.back()" class="absolute top-6 left-6 text-slate-500 hover:text-white transition text-xs flex items-center gap-1">← Cancelar</button>
         <h2 class="text-lg font-bold text-center mb-6 text-white">{{ 'Editar' if t else 'Novo' }} Lançamento</h2>
         <form method="POST" class="space-y-5">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="grid grid-cols-2 gap-2 p-1 bg-slate-900/80 rounded-lg border border-slate-800">
                 <label class="cursor-pointer"><input type="radio" name="type" value="expense" class="peer sr-only" {{ 'checked' if not t or t.type == 'expense' else '' }}><div class="text-center py-2 rounded-md text-slate-500 text-xs font-bold uppercase tracking-wider peer-checked:bg-red-500/10 peer-checked:text-red-500 transition">Saída</div></label>
                 <label class="cursor-pointer"><input type="radio" name="type" value="income" class="peer sr-only" {{ 'checked' if t and t.type == 'income' else '' }}><div class="text-center py-2 rounded-md text-slate-500 text-xs font-bold uppercase tracking-wider peer-checked:bg-green-500/10 peer-checked:text-green-500 transition">Entrada</div></label>

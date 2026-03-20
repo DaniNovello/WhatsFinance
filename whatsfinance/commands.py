@@ -1,6 +1,6 @@
-import db
 from datetime import datetime
-import ai_parser
+
+from whatsfinance import ai_parser, db
 
 def format_detailed_report(transactions):
     if not transactions:
