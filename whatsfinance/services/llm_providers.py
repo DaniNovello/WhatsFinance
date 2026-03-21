@@ -151,19 +151,25 @@ def gemini_transcribe_audio(file_path) -> str:
     import google.generativeai as genai
     key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not key:
+        logger.warning("GEMINI_API_KEY não definida, transcrição de áudio desabilitada.")
         return ""
+    
+    model_name = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
     
     try:
         genai.configure(api_key=key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel(model_name)
         
         # Upload do arquivo pro GenAI
         audio_file = genai.upload_file(path=str(file_path))
+        logger.info("Áudio enviado ao Gemini (%s), transcrevendo...", model_name)
         
-        prompt = "Transcreva exatamente o que é dito neste áudio em português. Não adicione nenhum comentário, apenas o texto falado."
+        prompt = "Transcreva exatamente o que é dito neste áudio em português. Retorne APENAS o texto falado, sem nenhum comentário adicional."
         response = model.generate_content([audio_file, prompt])
         
-        return response.text.strip()
+        result = (response.text or "").strip()
+        logger.info("Transcrição concluída: %s", result[:100] if result else "(vazio)")
+        return result
     except Exception as e:
         logger.error("Erro ao transcrever áudio com Gemini: %s", e)
         return ""
