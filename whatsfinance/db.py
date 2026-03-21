@@ -64,7 +64,7 @@ def get_invoice_total(user_id, card_id=None):
         trans = supabase.table('transactions').select('amount')\
             .eq('user_id', user_id).eq('card_id', card['id'])\
             .gte('transaction_date', start_date.isoformat())\
-            .lte('transaction_date', end_date.isoformat()).execute().data
+            .lt('transaction_date', (end_date + timedelta(days=1)).isoformat()).execute().data
             
         card_total = sum(float(t['amount']) for t in trans)
         total_invoice += card_total
