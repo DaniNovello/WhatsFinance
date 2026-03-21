@@ -46,7 +46,7 @@ class GeminiProvider(BaseLLMProvider):
         key = os.environ.get("GEMINI_API_KEY", "").strip()
         if key:
             genai.configure(api_key=key)
-        self._model_name = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+        self._model_name = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
         self._generation_config = {
             "temperature": 0.15,
             "response_mime_type": "application/json",
@@ -154,7 +154,7 @@ def gemini_transcribe_audio(file_path) -> str:
         logger.warning("GEMINI_API_KEY não definida, transcrição de áudio desabilitada.")
         return ""
     
-    model_name = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+    model_name = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
     
     try:
         genai.configure(api_key=key)
