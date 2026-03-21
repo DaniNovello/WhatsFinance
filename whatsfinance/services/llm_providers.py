@@ -146,6 +146,29 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             return normalize_llm_dict({}, source="llm")
 
 
+def gemini_transcribe_audio(file_path) -> str:
+    """Usa o Gemini para transcrever um arquivo de áudio local (ex: .oga do Telegram)."""
+    import google.generativeai as genai
+    key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not key:
+        return ""
+    
+    try:
+        genai.configure(api_key=key)
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        
+        # Upload do arquivo pro GenAI
+        audio_file = genai.upload_file(path=str(file_path))
+        
+        prompt = "Transcreva exatamente o que é dito neste áudio em português. Não adicione nenhum comentário, apenas o texto falado."
+        response = model.generate_content([audio_file, prompt])
+        
+        return response.text.strip()
+    except Exception as e:
+        logger.error("Erro ao transcrever áudio com Gemini: %s", e)
+        return ""
+
+
 def get_llm_provider() -> BaseLLMProvider:
     """Escolhe provedor por LLM_PROVIDER (default: gemini)."""
     p = os.environ.get("LLM_PROVIDER", "gemini").strip().lower()

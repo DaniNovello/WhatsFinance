@@ -12,6 +12,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(level
 from whatsfinance import db
 from whatsfinance.bot.handlers import register_telegram_webhook
 from whatsfinance.routes.web_routes import User, web_bp
+from whatsfinance.services import multimodal_input
+from whatsfinance.services.llm_providers import gemini_transcribe_audio
+
+multimodal_input.set_transcriber(gemini_transcribe_audio)
 
 app = Flask(__name__)
 
