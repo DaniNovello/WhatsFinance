@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "supabase": {
+      "url": "https://mcp.supabase.com/mcp",
+      "headers": {
+        "Authorization": "Bearer sbp_f28a0e83c4218694a1532cf4db34b466fe7e6ee0"
+      }
+    },
+    "render": {
+      "url": "https://mcp.render.com/mcp",
+      "headers": {
+        "Authorization": "Bearer rnd_hvlwm6kJKR5XEhRTYn9sb48nuTxi"
+      }
+    }
+  }
+}
