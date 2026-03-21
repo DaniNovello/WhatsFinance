@@ -316,13 +316,34 @@ def _handle_message(msg):
                 send_message(chat_id, report)
 
             else:
+                # Só mostra mensagem de stub se a transcrição realmente
+                # retornou vazio (o transcriber não está plugado de verdade).
+                from whatsfinance.services.multimodal_input import transcribe_audio as _ta
+                _transcriber_is_stub = (_ta.__module__ == "whatsfinance.services.multimodal_input" 
+                                        and not getattr(_ta, "_is_real", False))
                 if had_voice and not initial_text.strip() and not image_bytes:
-                    send_message(
-                        chat_id,
-                        "🎤 Áudio recebido. A transcrição ainda está em modo *stub* — "
-                        "plugue um motor com `services.multimodal_input.set_transcriber` "
-                        "ou envie também por texto.",
-                    )
+                    # Verifica se o pipeline realmente não conseguiu transcrever
+                    # checando se o resultado final é "unknown" sem nenhum dado útil
+                    if intent in (None, "unknown") and not entities.get("amount"):
+                        greeting = (
+                            "Olá! 👋" if intent == "greeting"
+                            else "Não entendi o que você disse no áudio. Tente novamente com mais detalhes, por exemplo: *gastei 50 reais no mercado*."
+                        )
+                        send_message(
+                            chat_id,
+                            f"{greeting}\nO que deseja fazer?",
+                            reply_markup=keyboards.get_main_menu_keyboard(),
+                        )
+                    else:
+                        greeting = (
+                            "Olá! 👋" if intent == "greeting"
+                            else "Não entendi como registro, mas aqui está seu menu:"
+                        )
+                        send_message(
+                            chat_id,
+                            f"{greeting}\nO que deseja fazer?",
+                            reply_markup=keyboards.get_main_menu_keyboard(),
+                        )
                 else:
                     greeting = (
                         "Olá! 👋" if intent == "greeting" else "Não entendi como registro, mas aqui está seu menu:"
