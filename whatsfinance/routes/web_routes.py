@@ -77,7 +77,7 @@ def send_code():
     code = str(random.randint(100000, 999999))
     expires = datetime.now(timezone.utc) + timedelta(minutes=ws.VERIFICATION_CODE_TTL_MINUTES)
     db.set_verification_code(t_id, code, expires.isoformat())
-    send_telegram_msg(t_id, f"🔐 *Código Zenith:*\n\n`{code}`\n\nVálido por {ws.VERIFICATION_CODE_TTL_MINUTES} min.")
+    send_telegram_msg(t_id, f"🔐 *Código Zenit:*\n\n`{code}`\n\nVálido por {ws.VERIFICATION_CODE_TTL_MINUTES} min.")
     return render_template_string(
         tpl.BASE_LAYOUT.replace("{content_body}", tpl.VERIFY_PAGE), telegram_id=t_id
     )

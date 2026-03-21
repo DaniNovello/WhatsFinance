@@ -72,6 +72,35 @@ def get_invoice_total(user_id, card_id=None):
 
     return total_invoice, details
 
+def get_detailed_report(user_id, period='this_week'):
+    """Retorna transações do usuário filtradas por período."""
+    today = date.today()
+
+    if period == 'this_week':
+        start = today - timedelta(days=today.weekday())  # Segunda
+        end = today + timedelta(days=1)  # Amanhã (exclusivo)
+    elif period == 'last_week':
+        start = today - timedelta(days=today.weekday() + 7)
+        end = today - timedelta(days=today.weekday())
+    elif period == 'this_month':
+        start = today.replace(day=1)
+        end = today + timedelta(days=1)
+    else:
+        start = today - timedelta(days=7)
+        end = today + timedelta(days=1)
+
+    try:
+        resp = supabase.table('transactions').select('*')\
+            .eq('user_id', user_id)\
+            .gte('transaction_date', start.isoformat())\
+            .lt('transaction_date', end.isoformat())\
+            .order('transaction_date', desc=True)\
+            .execute()
+        return resp.data if resp.data else []
+    except Exception as e:
+        print(f"Erro get_detailed_report: {e}")
+        return []
+
 # --- TRANSAÇÕES (BOT) — mutações via transaction_service + RPCs ---
 def process_transaction_with_rpc(user_id, data):
     from whatsfinance.services import transaction_service as ts
