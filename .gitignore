@@ -1,7 +1,10 @@
 # Arquivo: .gitignore
-.claude/settings.local.json
 __pycache__/
 *.pyc
 .env
 venv/
 .cursor/
+
+# IDE / MCP credentials — NEVER commit
+.mcp.json
+.claude/
